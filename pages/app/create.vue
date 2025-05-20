@@ -1,6 +1,7 @@
 <template>
-    <main class="flex flex-col p-6">
-        <h1 class="text-xl mb-4">Create new Record</h1>
+    <main class="flex flex-col p-6 justify-between h-[100vh] pb-24">
+        <div>
+            <h1 class="text-xl mb-4 font-bold">Create new Record</h1>
         <div class="flex flex-col gap-4">
             <input class="border-1 rounded-lg p-2" type="text" placeholder="Title" v-model="newTitle">
             <input class="border-1 rounded-lg p-2" type="text" placeholder="Description" v-model="newDescription">
@@ -24,10 +25,12 @@
                 </div>
             </div>
         </div>
+        </div>
+        
         
         <button 
             @click="handleCreate" 
-            class="btn btn-primary mt-6"
+            class="btn btn-primary "
             :disabled="isUploading"
         >
             <span v-if="isUploading">

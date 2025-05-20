@@ -14,4 +14,7 @@ export default defineNuxtConfig({
       'motion': {}
     }
   },
+  plugins: [
+    { src: '~/plugins/ml5.client.js', mode: 'client' }
+  ]
 })
