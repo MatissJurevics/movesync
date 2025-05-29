@@ -21,7 +21,7 @@
                 />
                 <div v-if="imagePreview" class="mt-4">
                     <p class="text-sm mb-2">Preview:</p>
-                    <img :src="imagePreview" alt="Preview" class="max-w-xs rounded-lg" />
+                    <img :src="imagePreview" alt="Preview" class="max-w-xs rounded-lg max-h-64" />
                 </div>
             </div>
         </div>
@@ -124,13 +124,16 @@ const handleCreate = async () => {
         }
         
         // Create record in database
-        const { error } = await supabase.from("motions").insert({
+        const { data, error } = await supabase.from("motions").insert({
             title: newTitle.value,
             description: newDescription.value,
             public: newIsPublic.value,
             image: imageUrl || null,
             creator_id: userId
-        });
+        }).select();
+
+        
+        
         
         if (error) {
             console.error(error);
@@ -143,7 +146,7 @@ const handleCreate = async () => {
             imagePreview.value = null;
             
             // Navigate to home
-            navigateTo('/app');
+            navigateTo(`/app/sessions/record/${data[0].id}`);
         }
     } catch (err) {
         console.error("Error creating record:", err);
