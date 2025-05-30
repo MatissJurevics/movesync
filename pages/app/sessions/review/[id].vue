@@ -5,7 +5,7 @@
       <div v-if="!previewVideo" class="flex items-center justify-center h-64 bg-gray-100">
         <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500"></div>
       </div>
-      <video v-else :src="previewVideo" id="video"></video>
+      <video v-else :src="previewVideo"  id="video"></video>
       <canvas
         ref="poseCanvas"
         id="poseCanvas"
@@ -34,15 +34,15 @@
               }%, #e5e7eb ${(timestamp / videoLength) * 100}%, #e5e7eb 100%)`,
             }"
           />
+          
           <div class="flex justify-between text-xs text-gray-500 mt-1">
             <span>{{ formatTime(timestamp) }}</span>
             <span>{{ formatTime(videoLength) }}</span>
           </div>
         </div>
-        <div class="w-full mt-4 px-4">
+        <div class="w-full mt-4">
             <button class="btn btn-primary" @click="() => {
                 let current = currentPose;
-                current.timestamp = timestamp.value;
                 keyPoints.push(current);
             }">
                 Save Pose
@@ -56,19 +56,35 @@
                     <div 
                         v-for="(keyPoint, index) in keyPoints" 
                         :key="index"
-                        class="flex items-center justify-between p-3 bg-gray-100 rounded-lg"
+                        class="flex items-center justify-between p-3 bg-gray-100 rounded-lg hover:bg-gray-200 cursor-pointer transition-colors border border-gray-300"
                         @click="gotoKeyPoint(index)"
                     >
-                        <span class="text-sm font-medium">
-                            Key Pose {{ index + 1 }}
-                        </span>
-                        <span class="text-xs text-gray-600">
-                            {{  keyPoint.timestamp }}
-                        </span>
+                        <div class="flex items-center space-x-2">
+                            <span class="text-sm font-medium">
+                                Key Pose {{ index + 1 }}
+                            </span>
+                            <span class="text-xs text-gray-600">
+                                {{ formatTime(keyPoint.timestamp) }}
+                            </span>
+                        </div>
+                        <button 
+                            @click.stop="keyPoints.splice(index, 1)"
+                            class="text-red-500 hover:text-red-700 hover:bg-red-50 rounded-full p-1 transition-colors"
+                            title="Remove key pose"
+                        >
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                            </svg>
+                        </button>
                     </div>
                 </div>
             </div>
         </div>
+      </div>
+      <div class="w-full mt-4">
+        <button class="btn btn-primary" @click="submitPose">
+          Submit Pose
+        </button>
       </div>
     </div>
   </div>
@@ -93,6 +109,7 @@ const currentPose = ref(null);
 const videoPoseDataArray = ref([]);
 const poseCanvas = ref(null);
 const isPlaying = ref(false);
+const animationFrameId = ref(null);
 const keyPoints = ref([]);
 
 const gotoKeyPoint = (index) => {
@@ -131,20 +148,53 @@ const formatTime = (ms) => {
 
 const getClosestPose = () => {
   console.log("getting closest pose");
-  // if (!poseCanvas.value || !videoPoseDataArray.value || videoPoseDataArray.value.length === 0) {
-  //     return;
-  // }
+  
+  if (!videoPoseDataArray.value || videoPoseDataArray.value.length === 0) {
+    return;
+  }
 
-  // Find the closest pose data to the given timestamp
+  // Binary search to find the closest pose data to the given timestamp
+  let left = 0;
+  let right = videoPoseDataArray.value.length - 1;
   let closestPoseData = null;
   let minTimeDifference = Infinity;
+  
   console.log("posedatakeys", videoPoseDataArray.value);
 
-  for (const poseData of videoPoseDataArray.value) {
-    const timeDifference = Math.abs(poseData.timestamp - timestamp.value);
+  while (left <= right) {
+    const mid = Math.floor((left + right) / 2);
+    const currentPoseData = videoPoseDataArray.value[mid];
+    const timeDifference = Math.abs(currentPoseData.timestamp - timestamp.value);
+    
     if (timeDifference < minTimeDifference) {
       minTimeDifference = timeDifference;
-      closestPoseData = poseData;
+      closestPoseData = currentPoseData;
+    }
+    
+    if (currentPoseData.timestamp < timestamp.value) {
+      left = mid + 1;
+    } else if (currentPoseData.timestamp > timestamp.value) {
+      right = mid - 1;
+    } else {
+      // Exact match found
+      break;
+    }
+  }
+  
+  // Check adjacent elements for potentially closer matches
+  if (left < videoPoseDataArray.value.length) {
+    const rightPoseData = videoPoseDataArray.value[left];
+    const rightTimeDifference = Math.abs(rightPoseData.timestamp - timestamp.value);
+    if (rightTimeDifference < minTimeDifference) {
+      closestPoseData = rightPoseData;
+    }
+  }
+  
+  if (right >= 0) {
+    const leftPoseData = videoPoseDataArray.value[right];
+    const leftTimeDifference = Math.abs(leftPoseData.timestamp - timestamp.value);
+    if (leftTimeDifference < minTimeDifference) {
+      closestPoseData = leftPoseData;
     }
   }
 
@@ -154,6 +204,30 @@ const getClosestPose = () => {
 
   console.log("closestPoseData", closestPoseData);
   return closestPoseData;
+};
+
+const updatePoseLoop = () => {
+  if (isPlaying.value) {
+    const video = document.getElementById("video");
+    if (video) {
+      timestamp.value = video.currentTime * 1000; // Convert to milliseconds
+      drawPose();
+    }
+    animationFrameId.value = requestAnimationFrame(updatePoseLoop);
+  }
+};
+
+const startPoseUpdates = () => {
+  isPlaying.value = true;
+  updatePoseLoop();
+};
+
+const stopPoseUpdates = () => {
+  isPlaying.value = false;
+  if (animationFrameId.value) {
+    cancelAnimationFrame(animationFrameId.value);
+    animationFrameId.value = null;
+  }
 };
 
 onMounted(async () => {
@@ -186,9 +260,33 @@ onMounted(async () => {
     console.log("No pose data found");
   }
   console.log("previewVideo", previewVideo.value);
+  
   setTimeout(() => {
     loadPose();
-  }, 500);
+    
+    // Add video event listeners after video is loaded
+    const video = document.getElementById("video");
+    if (video) {
+      video.addEventListener('play', startPoseUpdates);
+      video.addEventListener('pause', stopPoseUpdates);
+      video.addEventListener('ended', stopPoseUpdates);
+      
+      // For scrubbing - update immediately on time change
+      video.addEventListener('seeked', () => {
+        timestamp.value = video.currentTime * 1000;
+        drawPose();
+      });
+      
+      // Remove any existing timeupdate listeners if you have them
+      // and replace with this manual scrubbing handler
+      video.addEventListener('input', (e) => {
+        if (!isPlaying.value) {
+          timestamp.value = video.currentTime * 1000;
+          drawPose();
+        }
+      });
+    }
+  }, 300);
 });
 
 const loadPose = () => {
@@ -260,6 +358,30 @@ const drawPose = () => {
     });
   }
 };
+
+// Add cleanup when component unmounts
+onUnmounted(() => {
+  stopPoseUpdates();
+  const video = document.getElementById("video");
+  if (video) {
+    video.removeEventListener('play', startPoseUpdates);
+    video.removeEventListener('pause', stopPoseUpdates);
+    video.removeEventListener('ended', stopPoseUpdates);
+  }
+});
+
+const submitPose = async() => {
+  let keyPoses = keyPoints.value;
+  let {data: sessionData, error: sessionError} = await supabase.from("motions").update({
+    key_poses: keyPoses,
+    completed: true
+  }).eq("id", sessionId);
+  if (sessionError) {
+    console.error("Error submitting pose:", sessionError);
+  } else {
+    navigateTo(`/app/motions/${sessionId}`);
+  }
+}
 
 
 </script>
