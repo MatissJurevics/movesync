@@ -19,6 +19,41 @@
         <h2 class="text-lg font-semibold text-gray-900 mb-6">Account Information</h2>
         
         <!-- Username Section -->
+        <!-- First Name Section -->
+        <div class="mb-6">
+          <label for="firstName" class="block text-sm font-medium text-gray-700 mb-2">
+            First Name
+          </label>
+          <div class="relative">
+            <input 
+              id="firstName"
+              v-model="firstName"
+              type="text" 
+              placeholder="Enter your first name"
+              class="w-full px-4 py-3 border border-gray-300 rounded-lg text-gray-700 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              :disabled="isUpdating"
+            >
+          </div>
+        </div>
+
+        <!-- Last Name Section -->
+        <div class="mb-6">
+          <label for="lastName" class="block text-sm font-medium text-gray-700 mb-2">
+            Last Name
+          </label>
+          <div class="relative">
+            <input 
+              id="lastName"
+              v-model="lastName"
+              type="text" 
+              placeholder="Enter your last name"
+              class="w-full px-4 py-3 border border-gray-300 rounded-lg text-gray-700 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              :disabled="isUpdating"
+            >
+          </div>
+        </div>
+
+        <!-- Username Section -->
         <div class="mb-6">
           <label for="username" class="block text-sm font-medium text-gray-700 mb-2">
             Username
@@ -35,27 +70,13 @@
           </div>
         </div>
 
-        <!-- Email Section (Read-only) -->
-        <div class="mb-6">
-          <label for="email" class="block text-sm font-medium text-gray-700 mb-2">
-            Email
-          </label>
-          <input 
-            id="email"
-            v-model="userEmail"
-            type="email" 
-            class="w-full px-4 py-3 border border-gray-300 rounded-lg text-gray-500 bg-gray-50 cursor-not-allowed"
-            disabled
-            readonly
-          >
-          <p class="text-xs text-gray-500 mt-1">Email cannot be changed</p>
-        </div>
+        
 
         <!-- Save Button -->
         <div class="flex justify-end">
           <button 
-            @click="updateUsername"
-            :disabled="isUpdating || !hasUsernameChanged"
+            @click="updateProfile"
+            :disabled="isUpdating"
             class="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed text-white font-medium py-3 px-8 rounded-lg transition-colors duration-200 flex items-center gap-2"
           >
             <svg v-if="isUpdating" class="animate-spin w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -82,4 +103,48 @@
 definePageMeta({
   layout: "appmain",
 });
+
+const supabase = useSupabase();
+const firstName = ref('');
+const lastName = ref('');
+const username = ref('');
+
+
+onMounted(async () => {
+  const { data: userData, error: userError } = await supabase.auth.getSession()
+  const userId = userData.session?.user.id;
+
+  const { data: user, error: dataError } = await supabase
+    .from('users')
+    .select('*')
+    .eq('id', userId)
+    .single();
+    console.log(user);
+    firstName.value = user.first_name;
+    lastName.value = user.last_name;
+    username.value = user.username;
+  
+});
+
+const updateUsername = async () => {
+  const { data: userData, error: userError } = await supabase.auth.getSession()
+  const userId = userData.session?.user.id;
+
+  const { data: user, error: dataError } = await supabase
+    .from('users')  
+    .update({
+      first_name: firstName.value,
+      last_name: lastName.value,
+      username: username.value
+    })
+    .eq('id', userId)
+    .single();
+
+  if (dataError) {
+    console.error('Error updating username:', dataError);
+  } else {
+    console.log('Username updated successfully');
+  }
+};
+
 </script>
