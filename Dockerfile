@@ -2,14 +2,20 @@ FROM node:18-alpine
 
 WORKDIR /app
 
+# Copy package files first for better caching
+COPY package*.json ./
+
+# Install dependencies with legacy peer deps to handle conflicts
+RUN npm install --legacy-peer-deps
+
 # Copy application files
 COPY . .
 
-# Install dependencies and build
-RUN npm install --legacy-peer-deps && npm run dev
+# Build the application for production
+RUN npm run build
 
 # Expose port
 EXPOSE 3000
 
-# Start the application
+# Start the production server
 CMD ["node", ".output/server/index.mjs"] 
