@@ -1,21 +1,21 @@
-FROM node:18-alpine
+FROM oven/bun:1-alpine
 
 WORKDIR /app
 
 # Copy package files first for better caching
-COPY package*.json ./
+COPY package*.json bun.lockb* ./
 
-# Install dependencies with legacy peer deps to handle conflicts
-RUN npm install --legacy-peer-deps
+# Install dependencies
+RUN bun install
 
 # Copy application files
 COPY . .
 
 # Build the application for production
-RUN npm run build
+RUN bun run build
 
 # Expose port
 EXPOSE 3000
 
 # Start the production server
-CMD ["node", ".output/server/index.mjs"] 
+CMD ["bun", "run", ".output/server/index.mjs"]
