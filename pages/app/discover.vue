@@ -337,7 +337,7 @@ onMounted(async () => {
     const session = await getUserSession()
   const userId = session.user.id
   console.log(userId)
-  const {data, error} = await supabase.from("motions").select().eq("public", true)
+  const {data, error} = await supabase.from("motions").select().eq("public", true).eq("completed", true)
   const {data: userBookmarks, error: userBookmarksError} = await supabase.from("users").select("saved_motions").eq("id", userId).single()
   records.value = data
   bookmarkedMotions.value = new Set(userBookmarks.saved_motions)

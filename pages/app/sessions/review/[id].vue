@@ -2,10 +2,15 @@
   <div>
     <h1>Review Session</h1>
     <div class="h-fit relative">
-      <div v-if="!previewVideo" class="flex items-center justify-center h-64 bg-gray-100">
-        <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500"></div>
+      <div
+        v-if="!previewVideo"
+        class="flex items-center justify-center h-64 bg-gray-100"
+      >
+        <div
+          class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500"
+        ></div>
       </div>
-      <video v-else :src="previewVideo"  id="video"></video>
+      <video v-else :src="previewVideo" id="video"></video>
       <canvas
         ref="poseCanvas"
         id="poseCanvas"
@@ -18,10 +23,10 @@
         <button class="btn btn-secondary" @click="togglePlayPause">
           {{ isPlaying ? "Pause" : "Play" }}
         </button>
-    </div>
-        <div class="w-full mt-4 px-4">
-          <div class="relative">
-            <input
+      </div>
+      <div class="w-full mt-4 px-4">
+        <div class="relative">
+          <input
             type="range"
             min="0"
             :max="videoLength"
@@ -34,61 +39,73 @@
               }%, #e5e7eb ${(timestamp / videoLength) * 100}%, #e5e7eb 100%)`,
             }"
           />
-          
+
           <div class="flex justify-between text-xs text-gray-500 mt-1">
             <span>{{ formatTime(timestamp) }}</span>
             <span>{{ formatTime(videoLength) }}</span>
           </div>
         </div>
         <div class="w-full mt-4">
-            <button class="btn btn-primary" @click="() => {
+          <button
+            class="btn btn-primary"
+            @click="
+              () => {
                 let current = currentPose;
                 keyPoints.push(current);
-            }">
-                Save Pose
-            </button>
-            <div class="mt-4">
-                <h3 class="text-lg font-semibold mb-2">Saved Key Poses</h3>
-                <div v-if="keyPoints.length === 0" class="text-gray-500 text-sm">
-                    No key poses saved yet
-                </div>
-                <div v-else class="space-y-2">
-                    <div 
-                        v-for="(keyPoint, index) in keyPoints" 
-                        :key="index"
-                        class="flex items-center justify-between p-3 bg-gray-100 rounded-lg hover:bg-gray-200 cursor-pointer transition-colors border border-gray-300"
-                        @click="gotoKeyPoint(index)"
-                    >
-                        <div class="flex items-center space-x-2">
-                            <span class="text-sm font-medium">
-                                Key Pose {{ index + 1 }}
-                            </span>
-                            <span class="text-xs text-gray-600">
-                                {{ formatTime(keyPoint.timestamp) }}
-                            </span>
-                        </div>
-                        <button 
-                            @click.stop="keyPoints.splice(index, 1)"
-                            class="text-red-500 hover:text-red-700 hover:bg-red-50 rounded-full p-1 transition-colors"
-                            title="Remove key pose"
-                        >
-                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
-                            </svg>
-                        </button>
-                    </div>
-                </div>
+              }
+            "
+          >
+            Save Pose
+          </button>
+          <div class="mt-4">
+            <h3 class="text-lg font-semibold mb-2">Saved Key Poses</h3>
+            <div v-if="keyPoints.length === 0" class="text-gray-500 text-sm">
+              No key poses saved yet
             </div>
+            <div v-else class="space-y-2">
+              <div
+                v-for="(keyPoint, index) in keyPoints"
+                :key="index"
+                class="flex items-center justify-between p-3 bg-gray-100 rounded-lg hover:bg-gray-200 cursor-pointer transition-colors border border-gray-300"
+                @click="gotoKeyPoint(index)"
+              >
+                <div class="flex items-center space-x-2">
+                  <span class="text-sm font-medium">
+                    Key Pose {{ index + 1 }}
+                  </span>
+                  <span class="text-xs text-gray-600">
+                    {{ formatTime(keyPoint.timestamp) }}
+                  </span>
+                </div>
+                <button
+                  @click.stop="keyPoints.splice(index, 1)"
+                  class="text-red-500 hover:text-red-700 hover:bg-red-50 rounded-full p-1 transition-colors"
+                  title="Remove key pose"
+                >
+                  <svg
+                    class="w-4 h-4"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      stroke-width="2"
+                      d="M6 18L18 6M6 6l12 12"
+                    ></path>
+                  </svg>
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
       <div class="w-full mt-4">
-        <button class="btn btn-primary" @click="submitPose">
-          Submit Pose
-        </button>
+        <button class="btn btn-primary" @click="submitPose">Submit Pose</button>
       </div>
     </div>
   </div>
-
 </template>
 
 <script setup>
@@ -98,6 +115,7 @@ import * as poseDetection from "@tensorflow-models/pose-detection";
 definePageMeta({
   layout: "appmainnonav",
 });
+const poseUtils = usePoseUtils()
 const sessionData = ref(null);
 const previewVideo = ref(null);
 const sessionId = useRoute().params.id;
@@ -115,7 +133,7 @@ const keyPoints = ref([]);
 const gotoKeyPoint = (index) => {
   timestamp.value = keyPoints.value[index].timestamp;
   scrubVideo();
-}
+};
 
 const togglePlayPause = () => {
   const video = document.getElementById("video");
@@ -148,7 +166,7 @@ const formatTime = (ms) => {
 
 const getClosestPose = () => {
   console.log("getting closest pose");
-  
+
   if (!videoPoseDataArray.value || videoPoseDataArray.value.length === 0) {
     return;
   }
@@ -158,19 +176,21 @@ const getClosestPose = () => {
   let right = videoPoseDataArray.value.length - 1;
   let closestPoseData = null;
   let minTimeDifference = Infinity;
-  
+
   console.log("posedatakeys", videoPoseDataArray.value);
 
   while (left <= right) {
     const mid = Math.floor((left + right) / 2);
     const currentPoseData = videoPoseDataArray.value[mid];
-    const timeDifference = Math.abs(currentPoseData.timestamp - timestamp.value);
-    
+    const timeDifference = Math.abs(
+      currentPoseData.timestamp - timestamp.value
+    );
+
     if (timeDifference < minTimeDifference) {
       minTimeDifference = timeDifference;
       closestPoseData = currentPoseData;
     }
-    
+
     if (currentPoseData.timestamp < timestamp.value) {
       left = mid + 1;
     } else if (currentPoseData.timestamp > timestamp.value) {
@@ -180,19 +200,23 @@ const getClosestPose = () => {
       break;
     }
   }
-  
+
   // Check adjacent elements for potentially closer matches
   if (left < videoPoseDataArray.value.length) {
     const rightPoseData = videoPoseDataArray.value[left];
-    const rightTimeDifference = Math.abs(rightPoseData.timestamp - timestamp.value);
+    const rightTimeDifference = Math.abs(
+      rightPoseData.timestamp - timestamp.value
+    );
     if (rightTimeDifference < minTimeDifference) {
       closestPoseData = rightPoseData;
     }
   }
-  
+
   if (right >= 0) {
     const leftPoseData = videoPoseDataArray.value[right];
-    const leftTimeDifference = Math.abs(leftPoseData.timestamp - timestamp.value);
+    const leftTimeDifference = Math.abs(
+      leftPoseData.timestamp - timestamp.value
+    );
     if (leftTimeDifference < minTimeDifference) {
       closestPoseData = leftPoseData;
     }
@@ -236,12 +260,12 @@ onMounted(async () => {
     .from("motions")
     .select("*")
     .eq("id", sessionId);
-  
+
   if (error) {
     console.error("Error fetching session data:", error);
     return;
   }
-  
+
   videoPoseDataArray.value = JSON.parse(data[0].pose_data);
   poseCanvas.value = document.getElementById("poseCanvas");
   sessionData.value = data;
@@ -250,10 +274,10 @@ onMounted(async () => {
     .from("videos")
     .getPublicUrl(sessionData.value[0].video);
   console.log("publicUrlData", publicUrlData);
-  let videoUrl = publicUrlData.publicUrl.replace("/videos/videos", "/videos")
+  let videoUrl = publicUrlData.publicUrl.replace("/videos/videos", "/videos");
   if (publicUrlData && publicUrlData.publicUrl) {
     previewVideo.value = videoUrl;
-    
+
     // Wait for video to be ready before setting up event listeners
     nextTick(() => {
       setupVideoEventListeners();
@@ -271,21 +295,21 @@ const setupVideoEventListeners = () => {
   }
 
   // Wait for video metadata to load before calling loadPose
-  video.addEventListener('loadedmetadata', () => {
+  video.addEventListener("loadedmetadata", () => {
     loadPose();
   });
 
-  video.addEventListener('play', startPoseUpdates);
-  video.addEventListener('pause', stopPoseUpdates);
-  video.addEventListener('ended', stopPoseUpdates);
-  
-  video.addEventListener('seeked', () => {
+  video.addEventListener("play", startPoseUpdates);
+  video.addEventListener("pause", stopPoseUpdates);
+  video.addEventListener("ended", stopPoseUpdates);
+
+  video.addEventListener("seeked", () => {
     timestamp.value = video.currentTime * 1000;
     drawPose();
   });
 
   // Handle video loading errors
-  video.addEventListener('error', (e) => {
+  video.addEventListener("error", (e) => {
     console.error("Video loading error:", e);
   });
 };
@@ -296,7 +320,7 @@ const loadPose = () => {
     console.error("Video not ready or duration not available");
     return;
   }
-  
+
   videoLength.value = video.duration * 1000;
   timestamp.value = 0;
   drawPose();
@@ -305,14 +329,14 @@ const loadPose = () => {
 const drawPose = () => {
   const canvasContext = poseCanvas.value.getContext("2d");
   const video = document.getElementById("video");
-  
+
   if (!video || !poseCanvas.value) return;
-  
+
   // Set canvas dimensions to match video display size
   const videoRect = video.getBoundingClientRect();
   poseCanvas.value.width = videoRect.width;
   poseCanvas.value.height = videoRect.height;
-  
+
   const canvasWidth = poseCanvas.value.width;
   const canvasHeight = poseCanvas.value.height;
 
@@ -322,12 +346,10 @@ const drawPose = () => {
   const poseDataLength = videoPoseDataArray.value.length;
   let durationFrac = timestamp.value / videoLength.value;
   const poseIndex = Math.floor(durationFrac * poseDataLength);
-  console.log("poseIndex", poseIndex);
-  currentPose.value =
-    videoPoseDataArray.value[Math.min(poseIndex, poseDataLength - 1)];
-  console.log("currentPose", currentPose.value);
+  let currentPoseValue = videoPoseDataArray.value[Math.min(poseIndex, poseDataLength - 1)];
+  currentPoseValue.timestamp = timestamp.value;
+  currentPose.value = currentPoseValue;
   const pose = currentPose.value;
-  console.log(pose);
 
   // Calculate scaling factors
   const scaleX = canvasWidth / video.videoWidth;
@@ -335,7 +357,7 @@ const drawPose = () => {
 
   // Draw connections (skeleton)
   const connections = poseDetection.util.getAdjacentPairs(
-    poseDetection.SupportedModels.BlazePose
+    poseDetection.SupportedModels.MoveNet
   );
 
   if (pose.keypoints) {
@@ -358,7 +380,13 @@ const drawPose = () => {
     pose.keypoints.forEach((keypoint) => {
       if (keypoint.score > 0.5) {
         canvasContext.beginPath();
-        canvasContext.arc(keypoint.x * scaleX, keypoint.y * scaleY, 5, 0, 2 * Math.PI);
+        canvasContext.arc(
+          keypoint.x * scaleX,
+          keypoint.y * scaleY,
+          5,
+          0,
+          2 * Math.PI
+        );
         canvasContext.fillStyle = "#ff0000";
         canvasContext.fill();
       }
@@ -371,24 +399,25 @@ onUnmounted(() => {
   stopPoseUpdates();
   const video = document.getElementById("video");
   if (video) {
-    video.removeEventListener('play', startPoseUpdates);
-    video.removeEventListener('pause', stopPoseUpdates);
-    video.removeEventListener('ended', stopPoseUpdates);
+    video.removeEventListener("play", startPoseUpdates);
+    video.removeEventListener("pause", stopPoseUpdates);
+    video.removeEventListener("ended", stopPoseUpdates);
   }
 });
 
-const submitPose = async() => {
+const submitPose = async () => {
   let keyPoses = keyPoints.value;
-  let {data: sessionData, error: sessionError} = await supabase.from("motions").update({
-    key_poses: keyPoses,
-    completed: true
-  }).eq("id", sessionId);
+  let { data: sessionData, error: sessionError } = await supabase
+    .from("motions")
+    .update({
+      key_poses: keyPoses,
+      completed: true,
+    })
+    .eq("id", sessionId);
   if (sessionError) {
     console.error("Error submitting pose:", sessionError);
   } else {
     navigateTo(`/app/motions/${sessionId}`);
   }
-}
-
-
+};
 </script>

@@ -179,7 +179,7 @@ onMounted(async() => {
   console.log(userId)
   popularMotion.value = await getPopularMotion()
   popularMotionLoaded.value = true
-  const {data, error} = await supabase.from("motions").select().eq("creator_id", userId)
+  const {data, error} = await supabase.from("motions").select().eq("creator_id", userId).eq("completed", true)
   recordsLoaded.value = true
   records.value = data
   const {data: userData, error: userError} = await supabase.from("users").select("saved_motions").eq("id", userId)

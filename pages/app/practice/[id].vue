@@ -84,6 +84,24 @@
         </div>
       </div>
 
+      <!-- Progress Bar -->
+      <div v-if="keyPoses && keyPoses.length > 0" class="px-4 pb-2">
+        <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
+          <div class="flex items-center justify-between mb-2">
+            <span class="text-sm font-medium text-gray-700">Progress</span>
+            <span class="text-sm font-medium text-gray-900">
+              {{ completedPoses.filter(Boolean).length }} / {{ keyPoses.length }}
+            </span>
+          </div>
+          <div class="w-full bg-gray-200 rounded-full h-2">
+            <div 
+              class="bg-green-500 h-2 rounded-full transition-all duration-500"
+              :style="{ width: `${(completedPoses.filter(Boolean).length / keyPoses.length) * 100}%` }"
+            ></div>
+          </div>
+        </div>
+      </div>
+
       <!-- Poses Section -->
       <div class="p-4 pt-0">
         <div class="bg-white rounded-xl shadow-sm border border-gray-200">
@@ -106,11 +124,19 @@
                 :key="index"
                 @click="selectPose(keyPose, index)"
                 :class="[
-                  'bg-gray-50 border-2 rounded-lg p-3 cursor-pointer transition-all duration-200 hover:shadow-md flex-shrink-0',
-                  selectedPoseIndex === index ? 'border-blue-500 bg-blue-50' : 'border-gray-200'
+                  'bg-gray-50 border-2 rounded-lg p-3 cursor-pointer transition-all duration-200 hover:shadow-md flex-shrink-0 relative',
+                  selectedPoseIndex === index ? 'border-blue-500 bg-blue-50' : 'border-gray-200',
+                  completedPoses[index] ? 'ring-2 ring-green-500' : ''
                 ]"
                 style="width: 180px;"
               >
+                <!-- Completed Badge -->
+                <div v-if="completedPoses[index]" class="absolute -top-2 -right-2 bg-green-500 text-white rounded-full p-1">
+                  <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                    <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"></path>
+                  </svg>
+                </div>
+                
                 <div class="flex items-center justify-between mb-2">
                   <h3 class="text-xs font-semibold text-gray-900">Pose {{ index + 1 }}</h3>
                   <div class="flex items-center gap-1">
@@ -141,6 +167,55 @@
               <p class="text-gray-500 text-sm">No poses available for this motion.</p>
             </div>
           </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Congratulations Modal -->
+    <div 
+      v-if="showCongratulationsModal" 
+      class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
+    >
+      <div class="bg-white rounded-xl p-8 m-4 max-w-md w-full text-center">
+        <!-- Success Animation -->
+        <div class="mb-6">
+          <div class="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
+            <svg class="w-10 h-10 text-green-500" fill="currentColor" viewBox="0 0 20 20">
+              <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"></path>
+            </svg>
+          </div>
+          <h2 class="text-2xl font-bold text-gray-900 mb-2">Congratulations!</h2>
+          <p class="text-gray-600">You've successfully completed all poses in this motion practice!</p>
+        </div>
+
+        <!-- Stats -->
+        <div class="bg-gray-50 rounded-lg p-4 mb-6">
+          <div class="grid grid-cols-2 gap-4 text-center">
+            <div>
+              <div class="text-2xl font-bold text-blue-600">{{ keyPoses.length }}</div>
+              <div class="text-sm text-gray-600">Poses Completed</div>
+            </div>
+            <div>
+              <div class="text-2xl font-bold text-green-600">100%</div>
+              <div class="text-sm text-gray-600">Success Rate</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Action Buttons -->
+        <div class="flex gap-3">
+          <button 
+            @click="resetProgress"
+            class="flex-1 bg-gray-500 hover:bg-gray-600 text-white font-medium py-3 px-4 rounded-lg transition-colors"
+          >
+            Practice Again
+          </button>
+          <button 
+            @click="$router.back()"
+            class="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-medium py-3 px-4 rounded-lg transition-colors"
+          >
+            Finish
+          </button>
         </div>
       </div>
     </div>
@@ -250,11 +325,12 @@
 
 <script setup>
 import * as poseDetection from "@tensorflow-models/pose-detection";
-import { usePoseUtils } from "@/composables/usePoseUtils";
 
 definePageMeta({
   layout: "appmain",
 });
+
+const poseUtils = usePoseUtils()
 
 const motionId = useRoute().params.id;
 const supabase = useSupabase();
@@ -275,6 +351,13 @@ const videoBorderColor = ref('border-gray-200');
 const canvasWidth = 150;
 const canvasHeight = 100;
 
+// Pose completion tracking
+const completedPoses = ref([]);
+const showCongratulationsModal = ref(false);
+const consecutiveHighSimilarity = ref(0);
+const SIMILARITY_THRESHOLD = 0.9;
+const CONSECUTIVE_FRAMES_REQUIRED = 10;
+
 // Pose adjustment controls
 const poseScaleX = ref(1.0);
 const poseScaleY = ref(1.0);
@@ -288,7 +371,6 @@ const PROXIMITY_CHECK_INTERVAL = 6;
 let detector = null;
 let animationFrame = null;
 
-const { standardizePose, isValidPose, calculatePoseSimilarity, drawPoseOnCanvas } = usePoseUtils();
 
 const formatTime = (timestamp) => {
   const seconds = Math.floor(timestamp / 1000);
@@ -316,6 +398,60 @@ const resetPoseAdjustments = () => {
   poseOffsetY.value = 0;
 };
 
+const resetProgress = () => {
+  completedPoses.value = new Array(keyPoses.value.length).fill(false);
+  selectedPoseIndex.value = null;
+  selectedPose.value = null;
+  poseSimilarity.value = null;
+  consecutiveHighSimilarity.value = 0;
+  showCongratulationsModal.value = false;
+  updateBorderColor(null);
+};
+
+const checkPoseCompletion = (similarity) => {
+  if (selectedPoseIndex.value === null) return;
+  
+  if (similarity > SIMILARITY_THRESHOLD) {
+    consecutiveHighSimilarity.value++;
+    
+    if (consecutiveHighSimilarity.value >= CONSECUTIVE_FRAMES_REQUIRED) {
+      // Mark current pose as completed
+      completedPoses.value[selectedPoseIndex.value] = true;
+      consecutiveHighSimilarity.value = 0;
+      
+      // Find next incomplete pose
+      const nextIncompleteIndex = completedPoses.value.findIndex((completed, index) => 
+        !completed && index > selectedPoseIndex.value
+      );
+      
+      // If no next incomplete pose, check if all are completed
+      if (nextIncompleteIndex === -1) {
+        // Check if all poses are completed
+        const allCompleted = completedPoses.value.every(completed => completed);
+        if (allCompleted) {
+          showCongratulationsModal.value = true;
+          selectedPose.value = null;
+          selectedPoseIndex.value = null;
+          poseSimilarity.value = null;
+          updateBorderColor(null);
+          return;
+        }
+        
+        // If not all completed, find first incomplete pose from beginning
+        const firstIncompleteIndex = completedPoses.value.findIndex(completed => !completed);
+        if (firstIncompleteIndex !== -1) {
+          selectPose(keyPoses.value[firstIncompleteIndex], firstIncompleteIndex);
+        }
+      } else {
+        // Move to next incomplete pose
+        selectPose(keyPoses.value[nextIncompleteIndex], nextIncompleteIndex);
+      }
+    }
+  } else {
+    consecutiveHighSimilarity.value = 0;
+  }
+};
+
 const loadMotionData = async () => {
   try {
     const { data: motion, error } = await supabase
@@ -331,10 +467,13 @@ const loadMotionData = async () => {
 
     motionData.value = motion;
     keyPoses.value = motion.key_poses || [];
+    
+    // Initialize completion tracking
+    completedPoses.value = new Array(keyPoses.value.length).fill(false);
 
     // Draw poses on canvases after data is loaded
     await nextTick();
-    drawPosesOnCanvases();
+    poseUtils.drawPosesOnCanvases();
   } catch (err) {
     console.error('Error loading motion data:', err);
   }
@@ -396,17 +535,20 @@ const detectPoses = async () => {
     const poses = await detector.estimatePoses(webcamVideo.value);
     
     if (poses.length > 0) {
-      const standardizedPose = standardizePose(poses[0]);
+      const standardizedPose = poseUtils.standardizePose(poses[0]);
       
       if (standardizedPose) {
         drawCurrentPose(standardizedPose);
         
         // If a pose is selected, compare similarity and update border
         if (selectedPose.value) {
-          const similarity = calculatePoseSimilarity(standardizedPose, selectedPose.value);
+          const similarity = poseUtils.calculatePoseSimilarity(standardizedPose, selectedPose.value);
           poseSimilarity.value = similarity;
           updateBorderColor(similarity);
           drawPoseOverlay(selectedPose.value);
+          
+          // Check for pose completion
+          checkPoseCompletion(similarity);
         }
       }
     }
@@ -432,7 +574,7 @@ const drawCurrentPose = (pose) => {
   context.clearRect(0, 0, canvas.width, canvas.height);
   
   // Draw current pose in green
-  drawPoseOnCanvas(canvas, pose, { scaleX: canvas.width / 640, scaleY: canvas.height / 480 });
+  poseUtils.drawPoseOnCanvas(canvas, pose, { scaleX: canvas.width / 640, scaleY: canvas.height / 480 });
 };
 
 const drawPoseOverlay = (referencePose) => {
@@ -451,7 +593,7 @@ const drawPoseOverlay = (referencePose) => {
   };
   
   // Draw reference pose in semi-transparent blue
-  drawPoseOnCanvas(canvas, transformedPose, { scaleX: canvas.width / 640, scaleY: canvas.height / 480 });
+  poseUtils.drawPoseOnCanvas(canvas, transformedPose, { scaleX: canvas.width / 640, scaleY: canvas.height / 480 });
 };
 
 const clearPoseOverlay = () => {
@@ -466,68 +608,9 @@ const selectPose = (keyPose, index) => {
   selectedPoseIndex.value = index;
   selectedPose.value = keyPose;
   poseSimilarity.value = null;
+  consecutiveHighSimilarity.value = 0;
   updateBorderColor(null);
   resetPoseAdjustments();
-};
-
-const drawPosesOnCanvases = () => {
-  keyPoses.value.forEach((pose, index) => {
-    nextTick(() => {
-      const canvas = poseCanvases.value[index];
-      if (canvas && pose.keypoints) {
-        drawPoseOnCanvas(canvas, pose);
-      }
-    });
-  });
-};
-
-const drawPose = (pose) => {
-  if (!poseCanvas.value || !isValidPose(pose)) return;
-  
-  const canvas = poseCanvas.value;
-  const context = canvas.getContext('2d');
-  
-  // Set canvas size to match video
-  canvas.width = webcamVideo.value.videoWidth || 640;
-  canvas.height = webcamVideo.value.videoHeight || 480;
-  
-  // Clear canvas
-  context.clearRect(0, 0, canvas.width, canvas.height);
-  
-  // Draw pose on canvas
-  drawPoseOnCanvas(canvas, pose, { scaleX: canvas.width / 640, scaleY: canvas.height / 480 });
-};
-
-const drawPoseSkeleton = (context, pose, color, lineWidth, scaleX = 1, scaleY = 1) => {
-  context.strokeStyle = color;
-  context.lineWidth = lineWidth;
-  
-  const connections = poseDetection.util.getAdjacentPairs(poseDetection.SupportedModels.MoveNet);
-  connections.forEach(([startIdx, endIdx]) => {
-    const startPoint = pose.keypoints[startIdx];
-    const endPoint = pose.keypoints[endIdx];
-    
-    if (startPoint.score > 0.3 && endPoint.score > 0.3) {
-      context.beginPath();
-      context.moveTo(startPoint.x * scaleX, startPoint.y * scaleY);
-      context.lineTo(endPoint.x * scaleX, endPoint.y * scaleY);
-      context.stroke();
-    }
-  });
-};
-
-const drawPoseKeypoints = (context, pose, color, radius) => {
-  if (!pose.keypoints) return;
-  
-  context.fillStyle = color;
-  
-  pose.keypoints.forEach((keypoint) => {
-    if (keypoint.score > 0.3) {
-      context.beginPath();
-      context.arc(keypoint.x, keypoint.y, radius, 0, 2 * Math.PI);
-      context.fill();
-    }
-  });
 };
 
 onMounted(async () => {

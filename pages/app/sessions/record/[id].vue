@@ -65,11 +65,13 @@
 <script setup>
 import * as tf from '@tensorflow/tfjs';
 import * as poseDetection from '@tensorflow-models/pose-detection';
-import { usePoseUtils } from '~/composables/usePoseUtils';
 
 definePageMeta({
     layout: "appmainnonav"
 })
+
+const poseUtils = usePoseUtils()
+
 
 const webcamVideo = ref(null)
 const recording = ref(false)
@@ -83,7 +85,6 @@ const formattedRecordingTime = computed(() => {
 const poseData = ref([])
 let videoStartTime = null
 
-const { standardizePose, isValidPose, drawPoseOnCanvas } = usePoseUtils();
 
 // Setup webcam access
 const setupWebcam = async () => {
@@ -121,11 +122,9 @@ const loadBlazePoseModel = async () => {
     webcamVideo.value.width = webcamVideo.value.videoWidth
 
     // Create detector with BlazePose model
-    const model = poseDetection.SupportedModels.BlazePose;
+    const model = poseDetection.SupportedModels.MoveNet;
     const detectorConfig = {
-        runtime: 'tfjs',
-        modelType: 'full',
-        enableSmoothing: true
+        modelType: poseDetection.movenet.modelType.SINGLEPOSE_THUNDER
     };
     
     const detector = await poseDetection.createDetector(model, detectorConfig);
@@ -141,7 +140,7 @@ const startPoseDetection = async () => {
             flipHorizontal: false
         });
         if (videoStartTime) {
-            const standardizedPose = standardizePose(poses[0], Date.now() - videoStartTime);
+            const standardizedPose = poseUtils.standardizePose(poses[0], Date.now() - videoStartTime);
             if (standardizedPose) {
                 poseData.value.push(standardizedPose);
             }
@@ -171,14 +170,14 @@ const drawPose = (pose, ctx, videoWidth, videoHeight) => {
     // Clear previous drawings
     ctx.clearRect(0, 0, videoWidth, videoHeight);
 
-    const connections = poseDetection.util.getAdjacentPairs(poseDetection.SupportedModels.BlazePose);
+    const connections = poseDetection.util.getAdjacentPairs(poseDetection.SupportedModels.MoveNet);
     if (connections && pose.keypoints) {
         connections.forEach(([i, j]) => {
             const kp1 = pose.keypoints[i];
             const kp2 = pose.keypoints[j];
             
             // Only draw if both keypoints are detected with good confidence
-            if (kp1.score > 0.5 && kp2.score > 0.5) {
+            if (kp1.score > 0.4 && kp2.score > 0.4) {
                 ctx.beginPath();
                 ctx.moveTo(kp1.x, kp1.y);
                 ctx.lineTo(kp2.x, kp2.y);
@@ -192,7 +191,7 @@ const drawPose = (pose, ctx, videoWidth, videoHeight) => {
     // Draw keypoints
     if (pose.keypoints) {
         pose.keypoints.forEach(keypoint => {
-            if (keypoint.score > 0.5) {
+            if (keypoint.score > 0.4) {
                 ctx.beginPath();
                 ctx.arc(keypoint.x, keypoint.y, 5, 0, 2 * Math.PI);
                 ctx.fillStyle = '#ff0000';
@@ -368,4 +367,4 @@ onBeforeUnmount(() => {
         tracks.forEach(track => track.stop())
     }
 })
-</script>
+</script>~

@@ -103,7 +103,6 @@
 
 <script setup>
 import * as poseDetection from "@tensorflow-models/pose-detection";
-import { usePoseUtils } from "~/composables/usePoseUtils";
 
 definePageMeta({
   layout: "appmain",
@@ -119,8 +118,7 @@ const poseCanvases = ref([]);
 const canvasWidth = 300;
 const canvasHeight = 200;
 
-const { isValidPose, drawPoseOnCanvas } = usePoseUtils();
-
+const poseUtils = usePoseUtils()
 const formatTime = (timestamp) => {
   const seconds = Math.floor(timestamp / 1000);
   const minutes = Math.floor(seconds / 60);
@@ -180,10 +178,10 @@ const renderKeyPoses = () => {
   nextTick(() => {
     keyPoses.value.forEach((keyPose, index) => {
       const canvas = poseCanvases.value[index];
-      if (canvas && isValidPose(keyPose)) {
+      if (canvas && poseUtils.isValidPose(keyPose)) {
         const scaleX = canvas.width / 640;
         const scaleY = canvas.height / 480;
-        drawPoseOnCanvas(canvas, keyPose, { scaleX, scaleY });
+        poseUtils.drawPoseOnCanvas(canvas, keyPose, { scaleX, scaleY });
       }
     });
   });
@@ -202,4 +200,4 @@ onMounted(async () => {
 watch(keyPoses, () => {
   renderKeyPoses();
 }, { deep: true });
-</script>
+</script>~/composables/use-pose
