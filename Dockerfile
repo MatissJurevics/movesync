@@ -6,7 +6,7 @@ WORKDIR /app
 COPY . .
 
 # Install dependencies and build
-RUN npm install --legacy-peer-deps && npm run build
+RUN npm install --legacy-peer-deps && npm run dev
 
 # Expose port
 EXPOSE 3000
