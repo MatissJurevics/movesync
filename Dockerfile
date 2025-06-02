@@ -6,7 +6,7 @@ WORKDIR /app
 COPY . .
 
 # Install dependencies and build
-RUN npm install && npm run build
+RUN bun install && bun dev --host
 
 # Expose port
 EXPOSE 3000
