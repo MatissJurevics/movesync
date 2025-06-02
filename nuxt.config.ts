@@ -7,11 +7,12 @@ export default defineNuxtConfig({
   modules: ['@nuxt/icon', '@vueuse/motion/nuxt'],
   vite: {
     plugins: [tailwindcss()],
-    build: {
-      rollupOptions: {
-        external: ['@mediapipe/pose']
-      }
+    optimizeDeps: {
+      include: ['@mediapipe/pose']
     }
+  },
+  build: {
+    transpile: ['@mediapipe/pose']
   },
   css: ["~/assets/app.css"],
   motion: {
