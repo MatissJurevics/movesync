@@ -236,13 +236,15 @@ onMounted(async () => {
     .from("motions")
     .select("*")
     .eq("id", sessionId);
-  videoPoseDataArray.value = JSON.parse(data[0].pose_data);
-  poseCanvas.value = document.getElementById("poseCanvas");
+  
   if (error) {
     console.error("Error fetching session data:", error);
-  } else {
-    sessionData.value = data;
+    return;
   }
+  
+  videoPoseDataArray.value = JSON.parse(data[0].pose_data);
+  poseCanvas.value = document.getElementById("poseCanvas");
+  sessionData.value = data;
 
   const { data: publicUrlData } = supabase.storage
     .from("videos")
@@ -251,46 +253,51 @@ onMounted(async () => {
   let videoUrl = publicUrlData.publicUrl.replace("/videos/videos", "/videos")
   if (publicUrlData && publicUrlData.publicUrl) {
     previewVideo.value = videoUrl;
+    
+    // Wait for video to be ready before setting up event listeners
+    nextTick(() => {
+      setupVideoEventListeners();
+    });
   } else {
     console.error("Error getting video public URL");
   }
-  if (currentPose.value) {
-    drawPose();
-  } else {
-    console.log("No pose data found");
-  }
-  console.log("previewVideo", previewVideo.value);
-  
-  setTimeout(() => {
-    loadPose();
-    
-    // Add video event listeners after video is loaded
-    const video = document.getElementById("video");
-    if (video) {
-      video.addEventListener('play', startPoseUpdates);
-      video.addEventListener('pause', stopPoseUpdates);
-      video.addEventListener('ended', stopPoseUpdates);
-      
-      // For scrubbing - update immediately on time change
-      video.addEventListener('seeked', () => {
-        timestamp.value = video.currentTime * 1000;
-        drawPose();
-      });
-      
-      // Remove any existing timeupdate listeners if you have them
-      // and replace with this manual scrubbing handler
-      video.addEventListener('input', (e) => {
-        if (!isPlaying.value) {
-          timestamp.value = video.currentTime * 1000;
-          drawPose();
-        }
-      });
-    }
-  }, 300);
 });
 
+const setupVideoEventListeners = () => {
+  const video = document.getElementById("video");
+  if (!video) {
+    console.error("Video element not found");
+    return;
+  }
+
+  // Wait for video metadata to load before calling loadPose
+  video.addEventListener('loadedmetadata', () => {
+    loadPose();
+  });
+
+  video.addEventListener('play', startPoseUpdates);
+  video.addEventListener('pause', stopPoseUpdates);
+  video.addEventListener('ended', stopPoseUpdates);
+  
+  video.addEventListener('seeked', () => {
+    timestamp.value = video.currentTime * 1000;
+    drawPose();
+  });
+
+  // Handle video loading errors
+  video.addEventListener('error', (e) => {
+    console.error("Video loading error:", e);
+  });
+};
+
 const loadPose = () => {
-  videoLength.value = document.getElementById("video").duration * 1000;
+  const video = document.getElementById("video");
+  if (!video || isNaN(video.duration)) {
+    console.error("Video not ready or duration not available");
+    return;
+  }
+  
+  videoLength.value = video.duration * 1000;
   timestamp.value = 0;
   drawPose();
 };

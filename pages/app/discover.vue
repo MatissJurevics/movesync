@@ -234,25 +234,94 @@ const formatDate = (dateString) => {
 }
 
 const toggleBookmark = async (motionId) => {
-  if (bookmarkedMotions.value.has(motionId)) {
-    bookmarkedMotions.value.delete(motionId)
-    console.log('Removed bookmark for motion:', motionId)
-  } else {
-    bookmarkedMotions.value.add(motionId)
-    console.log('Bookmarked motion:', motionId)
-  }
   const session = await getUserSession()
   const userId = session.user.id
-  console.log(userId, motionId)
-  const {data: rpcData, error: rpcError} = await supabase.rpc("toggle_motion_for_user", {
-    userid: userId,
-    motionid: motionId
-  })
-  console.log(rpcData, rpcError)
-  if (rpcError) {
-    console.error(rpcError)
+  
+  // Get current saved motions from database
+  const {data: userData, error: userError} = await supabase
+    .from("users")
+    .select("saved_motions")
+    .eq("id", userId)
+    .single()
+  
+  if (userError) {
+    console.error('Error fetching user data:', userError)
+    return
   }
-  bookmarkedMotions.value = new Set(bookmarkedMotions.value)
+  
+  // Handle NULL JSONB field properly - initialize as empty array if NULL
+  let savedMotions = userData?.saved_motions || []
+  
+  // Ensure it's an array (in case it's not null but also not an array)
+  if (!Array.isArray(savedMotions)) {
+    savedMotions = []
+  }
+  
+  const isCurrentlyBookmarked = savedMotions.includes(motionId)
+  
+  if (isCurrentlyBookmarked) {
+    // Remove motionId from saved motions
+    savedMotions = savedMotions.filter(id => id !== motionId)
+    bookmarkedMotions.value.delete(motionId)
+    console.log('Removed bookmark for motion:', motionId)
+    
+    // Decrement save_count on motions table
+    const {data: motionData, error: motionError} = await supabase
+      .from("motions")
+      .select("save_count")
+      .eq("id", motionId)
+      .single()
+    
+    if (!motionError && motionData) {
+      const newSaveCount = Math.max((motionData.save_count || 0) - 1, 0)
+      
+      await supabase
+        .from("motions")
+        .update({save_count: newSaveCount})
+        .eq("id", motionId)
+    }
+  } else {
+    // Add motionId to saved motions
+    savedMotions.push(motionId)
+    bookmarkedMotions.value.add(motionId)
+    console.log('Bookmarked motion:', motionId)
+    
+    // Increment save_count on motions table
+    const {data: motionData, error: motionError} = await supabase
+      .from("motions")
+      .select("save_count")
+      .eq("id", motionId)
+      .single()
+    
+    if (!motionError && motionData) {
+      const newSaveCount = (motionData.save_count || 0) + 1
+      
+      await supabase
+        .from("motions")
+        .update({save_count: newSaveCount})
+        .eq("id", motionId)
+    }
+  }
+  
+  // Update user's saved_motions JSONB field
+  const {data: updateData, error: updateError} = await supabase
+    .from("users")
+    .update({saved_motions: JSON.stringify(savedMotions)})
+    .eq("id", userId)
+    .select()
+  
+  console.log("updateData", updateData)
+  if (updateError) {
+    console.error('Error updating saved motions:', updateError)
+    // Revert local state on error
+    if (isCurrentlyBookmarked) {
+      bookmarkedMotions.value.add(motionId)
+    } else {
+      bookmarkedMotions.value.delete(motionId)
+    }
+  } else {
+    console.log('Successfully updated saved motions:', savedMotions)
+  }
 }
 
 const getUserSession = async () => {
@@ -269,7 +338,7 @@ onMounted(async () => {
   const userId = session.user.id
   console.log(userId)
   const {data, error} = await supabase.from("motions").select().eq("public", true)
-  const {data: userBookmarks, error: userBookmarksError} = await supabase.from("users").select("saved_motions").eq("user_id", userId)
+  const {data: userBookmarks, error: userBookmarksError} = await supabase.from("users").select("saved_motions").eq("id", userId).single()
   records.value = data
   bookmarkedMotions.value = new Set(userBookmarks.saved_motions)
 })

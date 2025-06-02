@@ -103,6 +103,7 @@
 
 <script setup>
 import * as poseDetection from "@tensorflow-models/pose-detection";
+import { usePoseUtils } from "~/composables/usePoseUtils";
 
 definePageMeta({
   layout: "appmain",
@@ -117,6 +118,8 @@ const keyPoses = ref([]);
 const poseCanvases = ref([]);
 const canvasWidth = 300;
 const canvasHeight = 200;
+
+const { isValidPose, drawPoseOnCanvas } = usePoseUtils();
 
 const formatTime = (timestamp) => {
   const seconds = Math.floor(timestamp / 1000);
@@ -173,55 +176,14 @@ const deleteMotion = async () => {
   }
 }
 
-const drawPoseOnCanvas = (canvas, pose) => {
-  if (!canvas || !pose || !pose.keypoints) return;
-
-  const context = canvas.getContext('2d');
-  context.clearRect(0, 0, canvas.width, canvas.height);
-
-  // Calculate scaling factors to fit pose in canvas
-  const scaleX = canvas.width / 640; // Assuming original video width of 640
-  const scaleY = canvas.height / 480; // Assuming original video height of 480
-
-  // Draw connections (skeleton)
-  const connections = poseDetection.util.getAdjacentPairs(
-    poseDetection.SupportedModels.BlazePose
-  );
-
-  if (pose.keypoints) {
-    // Draw skeleton connections
-    connections.forEach(([i, j]) => {
-      const keypoint1 = pose.keypoints[i];
-      const keypoint2 = pose.keypoints[j];
-
-      if (keypoint1 && keypoint2 && keypoint1.score > 0.5 && keypoint2.score > 0.5) {
-        context.beginPath();
-        context.moveTo(keypoint1.x * scaleX, keypoint1.y * scaleY);
-        context.lineTo(keypoint2.x * scaleX, keypoint2.y * scaleY);
-        context.lineWidth = 2;
-        context.strokeStyle = '#3b82f6';
-        context.stroke();
-      }
-    });
-
-    // Draw keypoints
-    pose.keypoints.forEach((keypoint) => {
-      if (keypoint.score > 0.5) {
-        context.beginPath();
-        context.arc(keypoint.x * scaleX, keypoint.y * scaleY, 4, 0, 2 * Math.PI);
-        context.fillStyle = '#ef4444';
-        context.fill();
-      }
-    });
-  }
-};
-
 const renderKeyPoses = () => {
   nextTick(() => {
     keyPoses.value.forEach((keyPose, index) => {
       const canvas = poseCanvases.value[index];
-      if (canvas) {
-        drawPoseOnCanvas(canvas, keyPose);
+      if (canvas && isValidPose(keyPose)) {
+        const scaleX = canvas.width / 640;
+        const scaleY = canvas.height / 480;
+        drawPoseOnCanvas(canvas, keyPose, { scaleX, scaleY });
       }
     });
   });

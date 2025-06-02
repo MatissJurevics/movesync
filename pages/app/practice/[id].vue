@@ -96,9 +96,6 @@
               <span class="ml-2 px-2 py-1 bg-blue-100 text-blue-800 text-sm font-medium rounded-full">
                 {{ keyPoses?.length || 0 }}
               </span>
-              <span v-if="completedPoses.size > 0" class="ml-2 px-2 py-1 bg-green-100 text-green-800 text-sm font-medium rounded-full">
-                {{ completedPoses.size }} completed
-              </span>
             </h2>
           </div>
           
@@ -109,22 +106,11 @@
                 :key="index"
                 @click="selectPose(keyPose, index)"
                 :class="[
-                  'bg-gray-50 border-2 rounded-lg p-3 cursor-pointer transition-all duration-200 hover:shadow-md flex-shrink-0 relative',
-                  selectedPoseIndex === index ? 'border-blue-500 bg-blue-50' : 'border-gray-200',
-                  isPoseCompleted(index) ? 'border-green-500 bg-green-50' : ''
+                  'bg-gray-50 border-2 rounded-lg p-3 cursor-pointer transition-all duration-200 hover:shadow-md flex-shrink-0',
+                  selectedPoseIndex === index ? 'border-blue-500 bg-blue-50' : 'border-gray-200'
                 ]"
                 style="width: 180px;"
               >
-                <!-- Completion Badge -->
-                <div 
-                  v-if="isPoseCompleted(index)"
-                  class="absolute -top-2 -right-2 w-8 h-8 bg-green-500 rounded-full flex items-center justify-center shadow-lg z-10"
-                >
-                  <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
-                  </svg>
-                </div>
-                
                 <div class="flex items-center justify-between mb-2">
                   <h3 class="text-xs font-semibold text-gray-900">Pose {{ index + 1 }}</h3>
                   <div class="flex items-center gap-1">
@@ -264,6 +250,7 @@
 
 <script setup>
 import * as poseDetection from "@tensorflow-models/pose-detection";
+import { usePoseUtils } from "@/composables/usePoseUtils";
 
 definePageMeta({
   layout: "appmain",
@@ -295,87 +282,19 @@ const poseOffsetX = ref(0);
 const poseOffsetY = ref(0);
 const showAdjustmentModal = ref(false);
 
-// Completion tracking
-const completedPoses = ref(new Set());
-const completionThreshold = 0.8; // 80%
-
 let frameCounter = 0;
 const PROXIMITY_CHECK_INTERVAL = 6;
 
 let detector = null;
 let animationFrame = null;
 
+const { standardizePose, isValidPose, calculatePoseSimilarity, drawPoseOnCanvas } = usePoseUtils();
+
 const formatTime = (timestamp) => {
   const seconds = Math.floor(timestamp / 1000);
   const minutes = Math.floor(seconds / 60);
   const remainingSeconds = seconds % 60;
   return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
-};
-
-const calculatePoseSimilarity = (currentPose, referencePose) => {
-  if (!currentPose?.keypoints || !referencePose?.keypoints) {
-    return 0;
-  }
-
-  const confidenceThreshold = 0.3;
-  const keypointDistances = [];
-
-  // Get actual video dimensions
-  const videoWidth = webcamVideo.value?.videoWidth || 640;
-  const videoHeight = webcamVideo.value?.videoHeight || 480;
-
-  // Important keypoints for overall pose comparison
-  const importantKeypoints = [
-    5, 6,   // shoulders
-    7, 8,   // elbows  
-    9, 10,  // wrists
-    11, 12, // hips
-    13, 14, // knees
-    15, 16  // ankles
-  ];
-
-  for (const keypointIndex of importantKeypoints) {
-    const currentKeypoint = currentPose.keypoints[keypointIndex];
-    const referenceKeypoint = referencePose.keypoints[keypointIndex];
-
-    if (currentKeypoint?.score > confidenceThreshold && 
-        referenceKeypoint?.score > confidenceThreshold) {
-      
-      // Normalize coordinates to 0-1 range first
-      const currentX = currentKeypoint.x / videoWidth;
-      const currentY = currentKeypoint.y / videoHeight;
-      const refX = referenceKeypoint.x / videoWidth;
-      const refY = referenceKeypoint.y / videoHeight;
-      
-      // Apply transformations in normalized space
-      const transformedRefX = (refX * poseScaleX.value) + (poseOffsetX.value / videoWidth);
-      const transformedRefY = (refY * poseScaleY.value) + (poseOffsetY.value / videoHeight);
-
-      // Calculate Euclidean distance in normalized space
-      const distance = Math.sqrt(
-        Math.pow(currentX - transformedRefX, 2) + Math.pow(currentY - transformedRefY, 2)
-      );
-
-      keypointDistances.push(distance);
-    }
-  }
-
-  if (keypointDistances.length === 0) return 0;
-
-  // Sort distances and take the top 50% (closest keypoints)
-  keypointDistances.sort((a, b) => a - b);
-  const top50PercentCount = Math.max(1, Math.ceil(keypointDistances.length * 0.5));
-  const bestDistances = keypointDistances.slice(0, top50PercentCount);
-
-  // Calculate average distance of the best matching keypoints
-  const averageDistance = bestDistances.reduce((sum, dist) => sum + dist, 0) / bestDistances.length;
-  
-  // Convert average distance to similarity score (0-1)
-  // Use dynamic max distance based on actual data
-  const maxDistance = Math.sqrt(2); // Maximum possible distance in normalized space
-  const similarity = Math.max(0, 1 - (averageDistance / (maxDistance * 0.3))); // Scale for better sensitivity
-  
-  return similarity;
 };
 
 const updateBorderColor = (similarity) => {
@@ -388,21 +307,6 @@ const updateBorderColor = (similarity) => {
   } else {
     videoBorderColor.value = 'border-red-500';
   }
-};
-
-const markPoseAsCompleted = (poseIndex) => {
-  if (!completedPoses.value.has(poseIndex)) {
-    completedPoses.value.add(poseIndex);
-    // Trigger reactivity
-    completedPoses.value = new Set(completedPoses.value);
-    
-    // Optional: Show completion feedback
-    console.log(`Pose ${poseIndex + 1} completed!`);
-  }
-};
-
-const isPoseCompleted = (poseIndex) => {
-  return completedPoses.value.has(poseIndex);
 };
 
 const resetPoseAdjustments = () => {
@@ -492,19 +396,17 @@ const detectPoses = async () => {
     const poses = await detector.estimatePoses(webcamVideo.value);
     
     if (poses.length > 0) {
-      const currentPose = poses[0];
-      drawCurrentPose(currentPose);
+      const standardizedPose = standardizePose(poses[0]);
       
-      // If a pose is selected, compare similarity and update border
-      if (selectedPose.value && selectedPoseIndex.value !== null) {
-        const similarity = calculatePoseSimilarity(currentPose, selectedPose.value);
-        poseSimilarity.value = similarity;
-        updateBorderColor(similarity);
-        drawPoseOverlay(selectedPose.value);
+      if (standardizedPose) {
+        drawCurrentPose(standardizedPose);
         
-        // Check for completion
-        if (similarity > completionThreshold) {
-          markPoseAsCompleted(selectedPoseIndex.value);
+        // If a pose is selected, compare similarity and update border
+        if (selectedPose.value) {
+          const similarity = calculatePoseSimilarity(standardizedPose, selectedPose.value);
+          poseSimilarity.value = similarity;
+          updateBorderColor(similarity);
+          drawPoseOverlay(selectedPose.value);
         }
       }
     }
@@ -530,8 +432,7 @@ const drawCurrentPose = (pose) => {
   context.clearRect(0, 0, canvas.width, canvas.height);
   
   // Draw current pose in green
-  drawPoseKeypoints(context, pose, '#00FF00', 4);
-  drawPoseSkeleton(context, pose, '#00FF00', 3);
+  drawPoseOnCanvas(canvas, pose, { scaleX: canvas.width / 640, scaleY: canvas.height / 480 });
 };
 
 const drawPoseOverlay = (referencePose) => {
@@ -550,8 +451,7 @@ const drawPoseOverlay = (referencePose) => {
   };
   
   // Draw reference pose in semi-transparent blue
-  drawPoseKeypoints(context, transformedPose, 'rgba(0, 100, 255, 0.7)', 6);
-  drawPoseSkeleton(context, transformedPose, 'rgba(0, 100, 255, 0.7)', 4);
+  drawPoseOnCanvas(canvas, transformedPose, { scaleX: canvas.width / 640, scaleY: canvas.height / 480 });
 };
 
 const clearPoseOverlay = () => {
@@ -581,37 +481,21 @@ const drawPosesOnCanvases = () => {
   });
 };
 
-const drawPoseOnCanvas = (canvas, pose) => {
-  if (!canvas || !pose || !pose.keypoints) return;
-
+const drawPose = (pose) => {
+  if (!poseCanvas.value || !isValidPose(pose)) return;
+  
+  const canvas = poseCanvas.value;
   const context = canvas.getContext('2d');
+  
+  // Set canvas size to match video
+  canvas.width = webcamVideo.value.videoWidth || 640;
+  canvas.height = webcamVideo.value.videoHeight || 480;
+  
+  // Clear canvas
   context.clearRect(0, 0, canvas.width, canvas.height);
   
-  // Scale pose to fit canvas
-  const scaleX = canvas.width / 640;
-  const scaleY = canvas.height / 480;
-  
-  // Draw keypoints
-  drawPoseKeypoints(context, pose, '#ff0000', 2, scaleX, scaleY);
-  drawPoseSkeleton(context, pose, '#0000ff', 1.5, scaleX, scaleY);
-};
-
-const drawPoseKeypoints = (context, pose, color, radius, scaleX = 1, scaleY = 1) => {
-  context.fillStyle = color;
-  
-  pose.keypoints.forEach(keypoint => {
-    if (keypoint.score > 0.3) {
-      context.beginPath();
-      context.arc(
-        keypoint.x * scaleX, 
-        keypoint.y * scaleY, 
-        radius, 
-        0, 
-        2 * Math.PI
-      );
-      context.fill();
-    }
-  });
+  // Draw pose on canvas
+  drawPoseOnCanvas(canvas, pose, { scaleX: canvas.width / 640, scaleY: canvas.height / 480 });
 };
 
 const drawPoseSkeleton = (context, pose, color, lineWidth, scaleX = 1, scaleY = 1) => {
@@ -628,6 +512,20 @@ const drawPoseSkeleton = (context, pose, color, lineWidth, scaleX = 1, scaleY = 
       context.moveTo(startPoint.x * scaleX, startPoint.y * scaleY);
       context.lineTo(endPoint.x * scaleX, endPoint.y * scaleY);
       context.stroke();
+    }
+  });
+};
+
+const drawPoseKeypoints = (context, pose, color, radius) => {
+  if (!pose.keypoints) return;
+  
+  context.fillStyle = color;
+  
+  pose.keypoints.forEach((keypoint) => {
+    if (keypoint.score > 0.3) {
+      context.beginPath();
+      context.arc(keypoint.x, keypoint.y, radius, 0, 2 * Math.PI);
+      context.fill();
     }
   });
 };

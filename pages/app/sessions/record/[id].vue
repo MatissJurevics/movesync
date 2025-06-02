@@ -65,6 +65,7 @@
 <script setup>
 import * as tf from '@tensorflow/tfjs';
 import * as poseDetection from '@tensorflow-models/pose-detection';
+import { usePoseUtils } from '~/composables/usePoseUtils';
 
 definePageMeta({
     layout: "appmainnonav"
@@ -81,6 +82,8 @@ const formattedRecordingTime = computed(() => {
 })
 const poseData = ref([])
 let videoStartTime = null
+
+const { standardizePose, isValidPose, drawPoseOnCanvas } = usePoseUtils();
 
 // Setup webcam access
 const setupWebcam = async () => {
@@ -138,10 +141,10 @@ const startPoseDetection = async () => {
             flipHorizontal: false
         });
         if (videoStartTime) {
-            let formattedPose = poses
-            formattedPose[0].timestamp = Date.now() - videoStartTime
-            poseData.value.push(formattedPose[0])
-            // console.log("formattedPose",formattedPose)
+            const standardizedPose = standardizePose(poses[0], Date.now() - videoStartTime);
+            if (standardizedPose) {
+                poseData.value.push(standardizedPose);
+            }
         }
         if (poses && poses.length > 0) {
             drawPose(poses[0], canvasContext, webcamVideo.value.videoWidth, webcamVideo.value.videoHeight);
@@ -154,6 +157,7 @@ const startPoseDetection = async () => {
         requestAnimationFrame(startPoseDetection);
     }
 };
+
 let drawingStarted = ref(false)
 
 // Draw the detected pose on canvas
@@ -191,15 +195,11 @@ const drawPose = (pose, ctx, videoWidth, videoHeight) => {
             if (keypoint.score > 0.5) {
                 ctx.beginPath();
                 ctx.arc(keypoint.x, keypoint.y, 5, 0, 2 * Math.PI);
-                let opacity = keypoint.score
                 ctx.fillStyle = '#ff0000';
                 ctx.fill();
             }
         });
     }
-    
-    // Draw connections (skeleton)
-    
 };
 
 let canvasContext = null;
@@ -312,8 +312,6 @@ const saveRecording = async (blob) => {
         timestamp: Date.now(),
         ttl: 24 * 60 * 60 * 1000 // 1 day in milliseconds
       }
-    //   localStorage.setItem(`video_${sessionId}`, JSON.stringify(cacheData))
-    //   console.log("Video cached in localStorage with 1 day TTL")
     }
     reader.readAsDataURL(blob)
 
@@ -321,8 +319,20 @@ const saveRecording = async (blob) => {
       .from('videos')
       .upload(filePath, blob)
     
-    // console.log("Video Data", videoData)
     let videoUrl = videoData.fullPath
+    // Get video dimensions and append to pose data
+    const video = webcamVideo.value
+    if (video && poseData.value.length > 0) {
+      const videoDimensions = {
+        width: video.videoWidth,
+        height: video.videoHeight
+      }
+      
+      // Add dimensions to the first pose data entry or create a metadata entry
+      if (poseData.value[0]) {
+        poseData.value[0].videoDimensions = videoDimensions
+      }
+    }
     let jsonPoseData = JSON.stringify(poseData.value)
     console.log("Pose Data", jsonPoseData, videoUrl)
 
@@ -338,8 +348,6 @@ const saveRecording = async (blob) => {
     }
     
     navigateTo(`/app/sessions/review/${sessionId}`)
-    // Note: There was a missing database operation here in the original code
-    // You might want to add code to save the recording metadata to your database
   } catch (err) {
     console.error("Error saving recording:", err)
   }

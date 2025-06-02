@@ -73,6 +73,9 @@
             </div>
           </div>
         </div>
+
+        
+
       <div class="px-6">
         <h1 class="my-4 font-bold text-2xl">Your Motions</h1>
       <div v-if="!recordsLoaded" class="flex items-center justify-center py-8">
@@ -92,6 +95,31 @@
         </div>
       </div>
       </div>
+      <!-- Saved Motions Section -->
+      <div class="px-6 mb-8">
+          <h1 class="my-4 font-bold text-2xl">Saved Motions</h1>
+          <div v-if="!savedMotionsLoaded" class="flex items-center justify-center py-8">
+            <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500"></div>
+          </div>
+          <div v-else-if="savedMotionsData.length === 0" class="text-center py-8 text-gray-500">
+            No saved motions yet. Discover motions to save them!
+          </div>
+          <div v-else class="flex overflow-x-auto gap-4 pb-6">
+            <div v-for="motion in savedMotionsData" :key="motion.id" @click="navigateTo(`/app/motions/${motion.id}`)" class="relative shadow-xl cursor-pointer hover:shadow-2xl transition-shadow flex-none w-56 h-40 rounded-lg overflow-hidden" :style="motion.image ? `background-image: url(${motion.image}); background-size: cover; background-position: center;` : 'background-color: #f3f4f6;'">
+              <div class="absolute inset-0 bg-black/50"></div>
+              <div class="relative z-10 p-4 text-white flex flex-col justify-end h-full">
+                <div class="absolute top-3 right-3">
+                  <svg class="w-5 h-5 text-yellow-400" fill="currentColor" viewBox="0 0 24 24">
+                    <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
+                  </svg>
+                </div>
+                <h2 class="text-base font-bold text-white">{{ motion.title }}</h2>
+                <p class="text-white/80 text-sm">{{ motion.description }}</p>
+                <p class="text-white/60 text-xs">{{ formatDate(motion.created_at) }}</p>
+              </div>
+            </div>
+          </div>
+        </div>
       
     </div>
   </main>
@@ -106,6 +134,10 @@ const records = ref([])
 const recordsLoaded = ref(false)
 const popularMotion = ref(null)
 const popularMotionLoaded = ref(false)
+const savedMotions = ref([])
+const savedMotionsData = ref([])
+const savedMotionsLoaded = ref(false)
+
 
 const getUserSession = async () => {
   const {data, error} = await supabase.auth.getSession()
@@ -125,6 +157,22 @@ const formatDate = (date) => {
   return new Date(date).toLocaleDateString()
 }
 
+const getSavedMotionsData = async (motionIds) => {
+  if (!motionIds || motionIds.length === 0) return []
+  
+  const { data, error } = await supabase
+    .from("motions")
+    .select("*")
+    .in("id", motionIds)
+  
+  if (error) {
+    console.error("Error fetching saved motions:", error)
+    return []
+  }
+  
+  return data || []
+}
+
 onMounted(async() => {
   const session = await getUserSession()
   const userId = session.user.id
@@ -134,5 +182,11 @@ onMounted(async() => {
   const {data, error} = await supabase.from("motions").select().eq("creator_id", userId)
   recordsLoaded.value = true
   records.value = data
+  const {data: userData, error: userError} = await supabase.from("users").select("saved_motions").eq("id", userId)
+  savedMotions.value = userData[0]?.saved_motions || []
+  
+  // Fetch saved motions data
+  savedMotionsData.value = await getSavedMotionsData(savedMotions.value)
+  savedMotionsLoaded.value = true
 })
 </script>
