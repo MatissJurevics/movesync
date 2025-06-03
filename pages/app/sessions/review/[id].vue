@@ -10,7 +10,14 @@
           class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500"
         ></div>
       </div>
-      <video v-else :src="previewVideo" id="video"></video>
+      <video 
+        v-else 
+        :src="previewVideo" 
+        id="video"
+        preload="metadata"
+        playsinline
+        webkit-playsinline
+      ></video>
       <canvas
         ref="poseCanvas"
         id="poseCanvas"
