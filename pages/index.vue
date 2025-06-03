@@ -9,7 +9,7 @@
               <svg class="w-8 h-8 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path>
               </svg>
-              <span class="ml-2 text-xl font-bold text-gray-900">MotionAI</span>
+              <span class="ml-2 text-xl font-bold text-gray-900">MotionSync</span>
             </div>
           </div>
           <div class="hidden md:block">
@@ -161,7 +161,7 @@
       <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div class="text-center">
           <h2 class="text-3xl font-bold text-gray-900 sm:text-4xl">
-            How MotionAI Works
+            How MotionSync Works
           </h2>
           <p class="mt-4 text-xl text-gray-600 max-w-3xl mx-auto">
             Start learning any motion in just three simple steps. Our AI technology does the rest.
@@ -216,7 +216,7 @@
               Perfect Your Form with AI Precision
             </h2>
             <p class="mt-6 text-xl text-gray-600">
-              Traditional learning methods can't provide the instant, detailed feedback that MotionAI delivers. Our advanced pose detection technology ensures you're always improving with proper form.
+              Traditional learning methods can't provide the instant, detailed feedback that MotionSync delivers. Our advanced pose detection technology ensures you're always improving with proper form.
             </p>
             <div class="mt-8 space-y-6">
               <div class="flex items-start">
@@ -333,7 +333,7 @@
               <svg class="w-8 h-8 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path>
               </svg>
-              <span class="ml-2 text-xl font-bold text-white">MotionAI</span>
+              <span class="ml-2 text-xl font-bold text-white">MotionSync</span>
             </div>
             <p class="mt-4 text-gray-400 max-w-md">
               Revolutionary AI-powered motion learning platform that helps you master any movement with real-time feedback and progress tracking.
@@ -348,7 +348,7 @@
           </div>
         </div>
         <div class="border-t border-gray-800 mt-8 pt-8 text-center text-gray-400">
-          <p>&copy; 2024 MotionAI. All rights reserved.</p>
+          <p>&copy; 2024 MotionSync. All rights reserved.</p>
         </div>
       </div>
     </footer>
@@ -358,9 +358,9 @@
 <script setup>
 // Set page metadata
 useSeoMeta({
-  title: 'MotionAI - Master Any Motion with AI-Powered Learning',
+  title: 'MotionSync - Master Any Motion with AI-Powered Learning',
   description: 'Revolutionary AI-powered motion learning platform that provides real-time feedback on your form and technique using advanced pose detection technology.',
-  ogTitle: 'MotionAI - Master Any Motion with AI-Powered Learning',
+  ogTitle: 'MotionSync - Master Any Motion with AI-Powered Learning',
   ogDescription: 'Revolutionary AI-powered motion learning platform that provides real-time feedback on your form and technique using advanced pose detection technology.',
   ogType: 'website',
   twitterCard: 'summary_large_image'
