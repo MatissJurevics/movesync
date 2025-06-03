@@ -1,6 +1,6 @@
 <template>
   <div>
-    <h1>Review Session</h1>
+    <h1>Review Session </h1>
     <div class="h-fit relative">
       <div
         v-if="!previewVideo"
@@ -11,9 +11,9 @@
         ></div>
       </div>
       <video 
-        v-else 
+        ref="video"
         :src="previewVideo" 
-        id="video"
+        id="displayVideo"
         preload="metadata"
         playsinline
         webkit-playsinline
@@ -37,30 +37,25 @@
             type="range"
             min="0"
             :max="videoLength"
-            v-model="timestamp"
+            v-model="currentTimestamp"
             @input="scrubVideo"
             class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer slider"
             :style="{
               background: `linear-gradient(to right, #3b82f6 0%, #3b82f6 ${
-                (timestamp / videoLength) * 100
-              }%, #e5e7eb ${(timestamp / videoLength) * 100}%, #e5e7eb 100%)`,
+                (currentTimestamp / videoLength) * 100
+              }%, #e5e7eb ${(currentTimestamp / videoLength) * 100}%, #e5e7eb 100%)`,
             }"
           />
 
           <div class="flex justify-between text-xs text-gray-500 mt-1">
-            <span>{{ formatTime(timestamp) }}</span>
+            <span>{{ formatTime(currentTimestamp) }}</span>
             <span>{{ formatTime(videoLength) }}</span>
           </div>
         </div>
         <div class="w-full mt-4">
           <button
             class="btn btn-primary"
-            @click="
-              () => {
-                let current = currentPose;
-                keyPoints.push(current);
-              }
-            "
+            @click="savePose"
           >
             Save Pose
           </button>
@@ -116,315 +111,165 @@
 </template>
 
 <script setup>
-import * as tf from "@tensorflow/tfjs";
-import * as poseDetection from "@tensorflow-models/pose-detection";
-
 definePageMeta({
   layout: "appmainnonav",
 });
-const poseUtils = usePoseUtils()
-const sessionData = ref(null);
-const previewVideo = ref(null);
-const sessionId = useRoute().params.id;
-let supabase = useSupabase();
-let session = ref(null);
-const videoLength = ref(0);
-const timestamp = ref(0);
-const currentPose = ref(null);
-const videoPoseDataArray = ref([]);
-const poseCanvas = ref(null);
-const isPlaying = ref(false);
-const animationFrameId = ref(null);
-const keyPoints = ref([]);
+const poseUtils = useStandardPose();
+const supabase = useSupabase();
 
-const gotoKeyPoint = (index) => {
-  timestamp.value = keyPoints.value[index].timestamp;
-  scrubVideo();
-};
+const video = ref(null);
+const poseCanvas = ref(null);
+
+// Session Data
+const sessionId = useRoute().params.id;
+const session = ref(null);
+
+// Video Data
+const previewVideo = ref(null);
+const currentTimestamp = ref(0);
+const currentPose = ref(null);
+const videoLength = ref(0);
+const isPlaying = ref(false);
+
+// Pose Data
+const availablePoses = ref([]);
+const selectedPoses = ref([]);
+const keyPoints = ref([])
+
+
+const formatTime = (time) => {
+  const minutes = Math.floor(time / 60000);
+  const seconds = Math.floor((time % 60000) / 1000);
+  return `${minutes}:${seconds.toString().padStart(2, '0')}`;
+}
 
 const togglePlayPause = () => {
-  const video = document.getElementById("video");
-  if (isPlaying.value) {
-    video.pause();
-  } else {
-    video.play();
-    video.addEventListener("timeupdate", () => {
-      timestamp.value = video.currentTime * 1000;
-      currentPose.value = getClosestPose(timestamp.value);
-      drawPose();
-    });
+  if (videoLength.value == 0) {
+    videoLength.value = video.value.duration*1000;
+    getClosestPose();
   }
+  if (video.value) {
+    if (isPlaying.value) {
+      video.value.pause();
+      isPlaying.value = false;
+    } else {
+      video.value.play();
+      isPlaying.value = true;
+    }
+  }
+}
 
-  isPlaying.value = !isPlaying.value;
-};
 
-const scrubVideo = () => {
-  let video = document.getElementById("video");
-  video.currentTime = timestamp.value / 1000;
-  currentPose.value = getClosestPose(timestamp.value);
-  drawPose();
-};
 
-const formatTime = (ms) => {
-  const minutes = Math.floor(ms / 60000);
-  const seconds = Math.floor((ms % 60000) / 1000);
-  return `${minutes}:${seconds.toString().padStart(2, "0")}`;
-};
+const getSession = async () => {
+  const { data, err } = await supabase.auth.getSession()
+  if (err) {
+    console.error(err);
+  }
+  session.value = data.session;
+}
+const loadPoses = async () => {
+  const { data, err } = await supabase.from("motions").select("pose_data").eq("id", sessionId)
+  if (err) {
+    console.error(err);
+  }
+  availablePoses.value = JSON.parse(data[0].pose_data);
+  currentPose.value = availablePoses.value[0];
+}
+const loadVideo = async () => {
+  const { data: videoData, err: videoError } = await supabase.from("motions").select("video").eq("id", sessionId).single()
+  const { data: videoUrl, err: videoUrlError } = await supabase.storage.from("videos").getPublicUrl(videoData.video)
+  if (videoUrlError) {
+    console.error(videoUrlError);
+  }
+  previewVideo.value = videoUrl.publicUrl.replace("/videos/videos", "/videos/");
+  poseUtils.drawOnCanvas(poseCanvas.value, currentPose.value)
+  
+  video.value.addEventListener("loadeddata", () => {
+    if (video.value.duration) {
+      videoLength.value = video.value.duration*1000;
+    } else {
+      console.error("Video duration is NaN")
+      videoLength.value = 0;
+    }
+  })
+  video.value.addEventListener("timeupdate", () => {
+    if (video.value.currentTime != currentTimestamp.value) {
+      
+        currentTimestamp.value = video.value.currentTime * 1000;
+        getClosestPose();
+      
+
+    }
+  })
+  console.log("Video Length", videoLength.value)
+}
 
 const getClosestPose = () => {
-  console.log("getting closest pose");
+  if (video.value && availablePoses.value.length > 0) {
+    
+    // Find the closest pose based on timestamp
+    const targetTimestamp = currentTimestamp.value; // Convert to milliseconds
+    let closestPose = availablePoses.value[0];
+    let minDifference = Math.abs(closestPose.timestamp - targetTimestamp);
+    
+    for (const pose of availablePoses.value) {
+      const difference = Math.abs(pose.timestamp - targetTimestamp);
+      if (difference < minDifference) {
+        minDifference = difference;
+        closestPose = pose;
+      }
+    }
+    
+    currentPose.value = closestPose;
+    currentTimestamp.value = currentTimestamp.value;
+    
+    // Draw the pose on canvas
+    if (poseCanvas.value && currentPose.value) {
+      poseUtils.drawOnCanvas(poseCanvas.value, currentPose.value);
+    }
+  }
+}
 
-  if (!videoPoseDataArray.value || videoPoseDataArray.value.length === 0) {
+const scrubVideo = async () => {
+  console.log("Scrubbing video", currentTimestamp.value)
+  if (video.value) {
+    video.value.currentTime = currentTimestamp.value / 1000;
+  }
+}
+const savePose = async () => {
+  keyPoints.value.push(currentPose.value);
+}
+const submitPose = async () => {
+  const { data, err } = await supabase.from("motions").update({
+    key_poses: keyPoints.value
+  }).eq("id", sessionId).select()
+  if (err) {
+    console.error(err);
     return;
   }
+  console.log("Pose submitted", data)
+  navigateTo("/app/motions/" + sessionId)
+}
+const gotoKeyPoint = (index) => {
+  currentPose.value = keyPoints.value[index];
+  currentTimestamp.value = keyPoints.value[index].timestamp;
+  video.value.currentTime = keyPoints.value[index].timestamp / 1000;
+}
 
-  // Binary search to find the closest pose data to the given timestamp
-  let left = 0;
-  let right = videoPoseDataArray.value.length - 1;
-  let closestPoseData = null;
-  let minTimeDifference = Infinity;
 
-  console.log("posedatakeys", videoPoseDataArray.value);
-
-  while (left <= right) {
-    const mid = Math.floor((left + right) / 2);
-    const currentPoseData = videoPoseDataArray.value[mid];
-    const timeDifference = Math.abs(
-      currentPoseData.timestamp - timestamp.value
-    );
-
-    if (timeDifference < minTimeDifference) {
-      minTimeDifference = timeDifference;
-      closestPoseData = currentPoseData;
-    }
-
-    if (currentPoseData.timestamp < timestamp.value) {
-      left = mid + 1;
-    } else if (currentPoseData.timestamp > timestamp.value) {
-      right = mid - 1;
-    } else {
-      // Exact match found
-      break;
-    }
-  }
-
-  // Check adjacent elements for potentially closer matches
-  if (left < videoPoseDataArray.value.length) {
-    const rightPoseData = videoPoseDataArray.value[left];
-    const rightTimeDifference = Math.abs(
-      rightPoseData.timestamp - timestamp.value
-    );
-    if (rightTimeDifference < minTimeDifference) {
-      closestPoseData = rightPoseData;
-    }
-  }
-
-  if (right >= 0) {
-    const leftPoseData = videoPoseDataArray.value[right];
-    const leftTimeDifference = Math.abs(
-      leftPoseData.timestamp - timestamp.value
-    );
-    if (leftTimeDifference < minTimeDifference) {
-      closestPoseData = leftPoseData;
-    }
-  }
-
-  if (!closestPoseData || !closestPoseData.pose) {
-    return;
-  }
-
-  console.log("closestPoseData", closestPoseData);
-  return closestPoseData;
-};
-
-const updatePoseLoop = () => {
-  if (isPlaying.value) {
-    const video = document.getElementById("video");
-    if (video) {
-      timestamp.value = video.currentTime * 1000; // Convert to milliseconds
-      drawPose();
-    }
-    animationFrameId.value = requestAnimationFrame(updatePoseLoop);
-  }
-};
-
-const startPoseUpdates = () => {
-  isPlaying.value = true;
-  updatePoseLoop();
-};
-
-const stopPoseUpdates = () => {
-  isPlaying.value = false;
-  if (animationFrameId.value) {
-    cancelAnimationFrame(animationFrameId.value);
-    animationFrameId.value = null;
-  }
-};
+const isMounted = ref(false);
 
 onMounted(async () => {
-  session.value = await supabase.auth.getSession();
-  const { data, error } = await supabase
-    .from("motions")
-    .select("*")
-    .eq("id", sessionId);
+  if (isMounted.value) return; isMounted.value = true;
+  poseUtils.initializePoseDetector();
+  await getSession();
+  await loadPoses();
+  await loadVideo();
+})
 
-  if (error) {
-    console.error("Error fetching session data:", error);
-    return;
-  }
 
-  videoPoseDataArray.value = JSON.parse(data[0].pose_data);
-  poseCanvas.value = document.getElementById("poseCanvas");
-  sessionData.value = data;
 
-  const { data: publicUrlData } = supabase.storage
-    .from("videos")
-    .getPublicUrl(sessionData.value[0].video);
-  console.log("publicUrlData", publicUrlData);
-  let videoUrl = publicUrlData.publicUrl.replace("/videos/videos", "/videos");
-  if (publicUrlData && publicUrlData.publicUrl) {
-    previewVideo.value = videoUrl;
 
-    // Wait for video to be ready before setting up event listeners
-    nextTick(() => {
-      setupVideoEventListeners();
-    });
-  } else {
-    console.error("Error getting video public URL");
-  }
-});
 
-const setupVideoEventListeners = () => {
-  const video = document.getElementById("video");
-  if (!video) {
-    console.error("Video element not found");
-    return;
-  }
-
-  // Wait for video metadata to load before calling loadPose
-  video.addEventListener("loadedmetadata", () => {
-    loadPose();
-  });
-
-  video.addEventListener("play", startPoseUpdates);
-  video.addEventListener("pause", stopPoseUpdates);
-  video.addEventListener("ended", stopPoseUpdates);
-
-  video.addEventListener("seeked", () => {
-    timestamp.value = video.currentTime * 1000;
-    drawPose();
-  });
-
-  // Handle video loading errors
-  video.addEventListener("error", (e) => {
-    console.error("Video loading error:", e);
-  });
-};
-
-const loadPose = () => {
-  const video = document.getElementById("video");
-  if (!video || isNaN(video.duration)) {
-    console.error("Video not ready or duration not available");
-    return;
-  }
-
-  videoLength.value = video.duration * 1000;
-  timestamp.value = 0;
-  drawPose();
-};
-
-const drawPose = () => {
-  const canvasContext = poseCanvas.value.getContext("2d");
-  const video = document.getElementById("video");
-
-  if (!video || !poseCanvas.value) return;
-
-  // Set canvas dimensions to match video display size
-  const videoRect = video.getBoundingClientRect();
-  poseCanvas.value.width = videoRect.width;
-  poseCanvas.value.height = videoRect.height;
-
-  const canvasWidth = poseCanvas.value.width;
-  const canvasHeight = poseCanvas.value.height;
-
-  // Clear previous drawings
-  canvasContext.clearRect(0, 0, canvasWidth, canvasHeight);
-
-  const poseDataLength = videoPoseDataArray.value.length;
-  let durationFrac = timestamp.value / videoLength.value;
-  const poseIndex = Math.floor(durationFrac * poseDataLength);
-  let currentPoseValue = videoPoseDataArray.value[Math.min(poseIndex, poseDataLength - 1)];
-  currentPoseValue.timestamp = timestamp.value;
-  currentPose.value = currentPoseValue;
-  const pose = currentPose.value;
-
-  // Calculate scaling factors
-  const scaleX = canvasWidth / video.videoWidth;
-  const scaleY = canvasHeight / video.videoHeight;
-
-  // Draw connections (skeleton)
-  const connections = poseDetection.util.getAdjacentPairs(
-    poseDetection.SupportedModels.MoveNet
-  );
-
-  if (pose.keypoints) {
-    connections.forEach(([i, j]) => {
-      const kp1 = pose.keypoints[i];
-      const kp2 = pose.keypoints[j];
-
-      // Only draw if both keypoints are detected with good confidence
-      if (kp1 && kp2 && kp1.score > 0.5 && kp2.score > 0.5) {
-        canvasContext.beginPath();
-        canvasContext.moveTo(kp1.x * scaleX, kp1.y * scaleY);
-        canvasContext.lineTo(kp2.x * scaleX, kp2.y * scaleY);
-        canvasContext.lineWidth = 2;
-        canvasContext.strokeStyle = "#0000ffa0";
-        canvasContext.stroke();
-      }
-    });
-
-    // Draw keypoints
-    pose.keypoints.forEach((keypoint) => {
-      if (keypoint.score > 0.5) {
-        canvasContext.beginPath();
-        canvasContext.arc(
-          keypoint.x * scaleX,
-          keypoint.y * scaleY,
-          5,
-          0,
-          2 * Math.PI
-        );
-        canvasContext.fillStyle = "#ff0000";
-        canvasContext.fill();
-      }
-    });
-  }
-};
-
-// Add cleanup when component unmounts
-onUnmounted(() => {
-  stopPoseUpdates();
-  const video = document.getElementById("video");
-  if (video) {
-    video.removeEventListener("play", startPoseUpdates);
-    video.removeEventListener("pause", stopPoseUpdates);
-    video.removeEventListener("ended", stopPoseUpdates);
-  }
-});
-
-const submitPose = async () => {
-  let keyPoses = keyPoints.value;
-  let { data: sessionData, error: sessionError } = await supabase
-    .from("motions")
-    .update({
-      key_poses: keyPoses,
-      completed: true,
-    })
-    .eq("id", sessionId);
-  if (sessionError) {
-    console.error("Error submitting pose:", sessionError);
-  } else {
-    navigateTo(`/app/motions/${sessionId}`);
-  }
-};
 </script>

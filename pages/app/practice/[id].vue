@@ -58,7 +58,8 @@
           
           <div class="flex-1 relative bg-gray-900 rounded-b-xl overflow-hidden">
             <video 
-              ref="webcamVideo"
+              ref="videoElement"
+              :srcObject="cameraStream"
               class="w-full h-full object-cover"
               autoplay
               muted
@@ -324,302 +325,270 @@
 </template>
 
 <script setup>
-import * as poseDetection from "@tensorflow-models/pose-detection";
-
 definePageMeta({
   layout: "appmain",
 });
 
-const poseUtils = usePoseUtils()
+const supabase = useSupabase()
+const poseUtils = useStandardPose()
 
-const motionId = useRoute().params.id;
-const supabase = useSupabase();
+// Camera and video refs
+const cameraStream = poseUtils.cameraStream
+const videoElement = ref(null)
+const cameraActive = ref(false)
+const poseCanvas = ref(null)
 
-const proximityResult = ref(null);
-const motionData = ref(null);
-const keyPoses = ref([]);
-const poseCanvases = ref([]);
-const webcamVideo = ref(null);
-const poseCanvas = ref(null);
-const cameraActive = ref(false);
-const selectedPoseIndex = ref(null);
-const selectedPose = ref(null);
-const stream = ref(null);
-const isPlaying = ref(false);
-const poseSimilarity = ref(null);
-const videoBorderColor = ref('border-gray-200');
-const canvasWidth = 150;
-const canvasHeight = 100;
+// Pose data
+const currentPose = ref(null)
+const poseSimilarity = ref(null)
+const selectedPose = ref(null)
+const selectedPoseIndex = ref(0)
 
-// Pose completion tracking
-const completedPoses = ref([]);
-const showCongratulationsModal = ref(false);
-const consecutiveHighSimilarity = ref(0);
-const SIMILARITY_THRESHOLD = 0.9;
-const CONSECUTIVE_FRAMES_REQUIRED = 10;
+// Canvas management
+const poseCanvases = ref([])
+const canvasWidth = 160
+const canvasHeight = 120
+
+// Motion data
+const motionId = useRoute().params.id
+const motionData = ref(null)
+const keyPoses = ref([])
+
+// Progress tracking
+const completedPoses = ref([])
+const showCongratulationsModal = ref(false)
+
+// UI state
+const showAdjustmentModal = ref(false)
 
 // Pose adjustment controls
-const poseScaleX = ref(1.0);
-const poseScaleY = ref(1.0);
-const poseOffsetX = ref(0);
-const poseOffsetY = ref(0);
-const showAdjustmentModal = ref(false);
+const poseScaleX = ref(1.0)
+const poseScaleY = ref(1.0)
+const poseOffsetX = ref(0)
+const poseOffsetY = ref(0)
 
-let frameCounter = 0;
-const PROXIMITY_CHECK_INTERVAL = 6;
+// Animation frame for pose detection loop
+const animationFrameId = ref(null)
 
-let detector = null;
-let animationFrame = null;
-
+// Computed properties
+const videoBorderColor = computed(() => {
+  if (poseSimilarity.value === null) return 'border-gray-300'
+  if (poseSimilarity.value > 0.8) return 'border-green-500'
+  if (poseSimilarity.value > 0.6) return 'border-yellow-500'
+  return 'border-red-500'
+})
 
 const formatTime = (timestamp) => {
-  const seconds = Math.floor(timestamp / 1000);
-  const minutes = Math.floor(seconds / 60);
-  const remainingSeconds = seconds % 60;
-  return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
-};
+  timestamp = timestamp / 1000
+  const minutes = Math.floor(timestamp / 60)
+  const seconds = Math.floor(timestamp % 60)
+  return `${minutes}:${seconds.toString().padStart(2, '0')}`
+}
 
-const updateBorderColor = (similarity) => {
-  if (similarity === null) {
-    videoBorderColor.value = 'border-gray-200';
-  } else if (similarity > 0.7) {
-    videoBorderColor.value = 'border-green-500';
-  } else if (similarity > 0.4) {
-    videoBorderColor.value = 'border-yellow-500';
+const loadData = async () => {
+  const { data, err } = await supabase.from("motions").select("*").eq("id", motionId).single()
+  if (err) {
+    console.error(err)
+    return;
+  }
+  motionData.value = data
+  keyPoses.value = data.key_poses
+  
+  // Initialize completed poses array
+  completedPoses.value = new Array(keyPoses.value.length).fill(false)
+  
+  // Select first pose by default
+  if (keyPoses.value.length > 0) {
+    selectPose(keyPoses.value[0], 0)
+  }
+  
+  console.log("Key Points", keyPoses.value)
+}
+
+const setupVideo = async () => {
+  let detectorStarted = await poseUtils.initializePoseDetector();
+  await poseUtils.startCamera(videoElement.value)
+  console.log("Stream", cameraStream.value)
+  cameraActive.value = true
+  if (detectorStarted) {
+    console.log("Detector Started")
+    videoElement.value.addEventListener("loadeddata", startPoseDetectionLoop)
   } else {
-    videoBorderColor.value = 'border-red-500';
+    console.log("Detector Not Started")
   }
-};
+}
 
-const resetPoseAdjustments = () => {
-  poseScaleX.value = 1.0;
-  poseScaleY.value = 1.0;
-  poseOffsetX.value = 0;
-  poseOffsetY.value = 0;
-};
-
-const resetProgress = () => {
-  completedPoses.value = new Array(keyPoses.value.length).fill(false);
-  selectedPoseIndex.value = null;
-  selectedPose.value = null;
-  poseSimilarity.value = null;
-  consecutiveHighSimilarity.value = 0;
-  showCongratulationsModal.value = false;
-  updateBorderColor(null);
-};
-
-const checkPoseCompletion = (similarity) => {
-  if (selectedPoseIndex.value === null) return;
+const startPoseDetectionLoop = async () => {
+  if (animationFrameId.value) {
+    cancelAnimationFrame(animationFrameId.value)
+  }
   
-  if (similarity > SIMILARITY_THRESHOLD) {
-    consecutiveHighSimilarity.value++;
-    
-    if (consecutiveHighSimilarity.value >= CONSECUTIVE_FRAMES_REQUIRED) {
-      // Mark current pose as completed
-      completedPoses.value[selectedPoseIndex.value] = true;
-      consecutiveHighSimilarity.value = 0;
+  const detectPose = async () => {
+    let pose = await poseUtils.getStandardPose(videoElement.value)
+    if (pose) {
+      currentPose.value = pose
       
-      // Find next incomplete pose
-      const nextIncompleteIndex = completedPoses.value.findIndex((completed, index) => 
-        !completed && index > selectedPoseIndex.value
-      );
+      // Draw user pose in green
+      poseUtils.drawOnCanvas(poseCanvas.value, pose, {
+        color: '#10B981',
+        lineWidth: 2,
+        pointRadius: 3,
+        clear: true
+      })
       
-      // If no next incomplete pose, check if all are completed
-      if (nextIncompleteIndex === -1) {
-        // Check if all poses are completed
-        const allCompleted = completedPoses.value.every(completed => completed);
-        if (allCompleted) {
-          showCongratulationsModal.value = true;
-          selectedPose.value = null;
-          selectedPoseIndex.value = null;
-          poseSimilarity.value = null;
-          updateBorderColor(null);
-          return;
-        }
+      // Draw reference pose overlay if selected
+      if (selectedPose.value) {
+        const adjustedReferencePose = adjustPoseForDisplay(selectedPose.value)
+        poseUtils.drawOnCanvas(poseCanvas.value, adjustedReferencePose, {
+          color: '#EF4444',
+          lineWidth: 2,
+          pointRadius: 3,
+          alpha: 0.7,
+          clear: false
+        })
         
-        // If not all completed, find first incomplete pose from beginning
-        const firstIncompleteIndex = completedPoses.value.findIndex(completed => !completed);
-        if (firstIncompleteIndex !== -1) {
-          selectPose(keyPoses.value[firstIncompleteIndex], firstIncompleteIndex);
-        }
-      } else {
-        // Move to next incomplete pose
-        selectPose(keyPoses.value[nextIncompleteIndex], nextIncompleteIndex);
-      }
-    }
-  } else {
-    consecutiveHighSimilarity.value = 0;
-  }
-};
-
-const loadMotionData = async () => {
-  try {
-    const { data: motion, error } = await supabase
-      .from('motions')
-      .select('*')
-      .eq('id', motionId)
-      .single();
-
-    if (error) {
-      console.error('Error loading motion:', error);
-      return;
-    }
-
-    motionData.value = motion;
-    keyPoses.value = motion.key_poses || [];
-    
-    // Initialize completion tracking
-    completedPoses.value = new Array(keyPoses.value.length).fill(false);
-
-    // Draw poses on canvases after data is loaded
-    await nextTick();
-    poseUtils.drawPosesOnCanvases();
-  } catch (err) {
-    console.error('Error loading motion data:', err);
-  }
-};
-
-const initializePoseDetector = async () => {
-  try {
-    const model = poseDetection.SupportedModels.MoveNet;
-    detector = await poseDetection.createDetector(model, {
-      modelType: poseDetection.movenet.modelType.SINGLEPOSE_THUNDER
-    });
-  } catch (err) {
-    console.error('Error initializing pose detector:', err);
-  }
-};
-
-const startCamera = async () => {
-  try {
-    stream.value = await navigator.mediaDevices.getUserMedia({ 
-      video: { width: 640, height: 480 },
-      audio: false 
-    });
-    
-    if (webcamVideo.value) {
-      webcamVideo.value.srcObject = stream.value;
-      cameraActive.value = true;
-      
-      // Start pose detection loop
-      detectPoses();
-    }
-  } catch (err) {
-    console.error('Error accessing camera:', err);
-  }
-};
-
-const stopCamera = () => {
-  if (stream.value) {
-    stream.value.getTracks().forEach(track => track.stop());
-    stream.value = null;
-  }
-  
-  if (webcamVideo.value) {
-    webcamVideo.value.srcObject = null;
-  }
-  
-  if (animationFrame) {
-    cancelAnimationFrame(animationFrame);
-    animationFrame = null;
-  }
-  
-  cameraActive.value = false;
-  clearPoseOverlay();
-};
-
-const detectPoses = async () => {
-  if (!detector || !webcamVideo.value || !cameraActive.value) return;
-
-  try {
-    const poses = await detector.estimatePoses(webcamVideo.value);
-    
-    if (poses.length > 0) {
-      const standardizedPose = poseUtils.standardizePose(poses[0]);
-      
-      if (standardizedPose) {
-        drawCurrentPose(standardizedPose);
+        // Calculate similarity
+        const similarity = calculatePoseSimilarity(pose, selectedPose.value)
+        poseSimilarity.value = similarity
         
-        // If a pose is selected, compare similarity and update border
-        if (selectedPose.value) {
-          const similarity = poseUtils.calculatePoseSimilarity(standardizedPose, selectedPose.value);
-          poseSimilarity.value = similarity;
-          updateBorderColor(similarity);
-          drawPoseOverlay(selectedPose.value);
-          
-          // Check for pose completion
-          checkPoseCompletion(similarity);
+        // Check if pose is completed (above threshold)
+        if (similarity > 0.8 && selectedPoseIndex.value !== null && !completedPoses.value[selectedPoseIndex.value]) {
+          markPoseCompleted(selectedPoseIndex.value)
         }
       }
     }
     
-    animationFrame = requestAnimationFrame(detectPoses);
-  } catch (err) {
-    console.error('Error detecting poses:', err);
-    animationFrame = requestAnimationFrame(detectPoses);
+    animationFrameId.value = requestAnimationFrame(detectPose)
   }
-};
+  
+  detectPose()
+}
 
-const drawCurrentPose = (pose) => {
-  if (!poseCanvas.value) return;
-  
-  const canvas = poseCanvas.value;
-  const context = canvas.getContext('2d');
-  
-  // Set canvas size to match video
-  canvas.width = webcamVideo.value.videoWidth || 640;
-  canvas.height = webcamVideo.value.videoHeight || 480;
-  
-  // Clear canvas
-  context.clearRect(0, 0, canvas.width, canvas.height);
-  
-  // Draw current pose in green
-  poseUtils.drawPoseOnCanvas(canvas, pose, { scaleX: canvas.width / 640, scaleY: canvas.height / 480 });
-};
-
-const drawPoseOverlay = (referencePose) => {
-  if (!poseCanvas.value || !referencePose.keypoints) return;
-  
-  const canvas = poseCanvas.value;
-  const context = canvas.getContext('2d');
-  
-  // Create transformed pose with separate X/Y scale and offset
-  const transformedPose = {
-    keypoints: referencePose.keypoints.map(keypoint => ({
+const adjustPoseForDisplay = (pose) => {
+  // Create a copy of the pose with adjustments applied
+  const adjustedPose = {
+    ...pose,
+    keypoints: pose.keypoints.map(keypoint => ({
       ...keypoint,
-      x: (keypoint.x * poseScaleX.value) + poseOffsetX.value,
-      y: (keypoint.y * poseScaleY.value) + poseOffsetY.value
+      x: (keypoint.x * poseScaleX.value) + (poseOffsetX.value / (poseCanvas.value?.width || 640)),
+      y: (keypoint.y * poseScaleY.value) + (poseOffsetY.value / (poseCanvas.value?.height || 480))
     }))
-  };
+  }
+  return adjustedPose
+}
+
+const calculatePoseSimilarity = (userPose, referencePose, toleranceThreshold = 0.15) => {
+  if (!userPose || !referencePose || !userPose.keypoints || !referencePose.keypoints) {
+    return 0;
+  }
+
+  let totalError = 0;
+  let validKeypoints = 0;
+
+  // Compare each keypoint between user pose and reference pose
+  userPose.keypoints.forEach((userKeypoint, index) => {
+    const referenceKeypoint = referencePose.keypoints[index];
+    
+    // Only compare keypoints that are visible and have confidence
+    if (userKeypoint.score > 0.3 && referenceKeypoint.score > 0.3) {
+      const xError = Math.abs(userKeypoint.x - referenceKeypoint.x);
+      const yError = Math.abs(userKeypoint.y - referenceKeypoint.y);
+      const euclideanError = Math.sqrt(xError * xError + yError * yError);
+      
+      totalError += euclideanError;
+      validKeypoints++;
+    }
+  });
+
+  if (validKeypoints === 0) {
+    return 0;
+  }
+
+  const averageError = totalError / validKeypoints;
+  const similarity = Math.max(0, Math.min(1, 1 - (averageError / toleranceThreshold)));
   
-  // Draw reference pose in semi-transparent blue
-  poseUtils.drawPoseOnCanvas(canvas, transformedPose, { scaleX: canvas.width / 640, scaleY: canvas.height / 480 });
+  return similarity;
 };
 
-const clearPoseOverlay = () => {
-  if (!poseCanvas.value) return;
+const markPoseCompleted = (poseIndex) => {
+  completedPoses.value[poseIndex] = true
   
-  const canvas = poseCanvas.value;
-  const context = canvas.getContext('2d');
-  context.clearRect(0, 0, canvas.width, canvas.height);
+  // Check if all poses are completed
+  if (completedPoses.value.every(completed => completed)) {
+    showCongratulationsModal.value = true
+  }
+}
+
+const renderKeyPoses = () => {
+  nextTick(() => {
+    keyPoses.value.forEach((keyPose, index) => {
+      const canvas = poseCanvases.value[index];
+      if (canvas) {
+        // Setup canvas dimensions
+        poseUtils.setupCanvas(canvas, {
+          width: canvasWidth,
+          height: canvasHeight
+        })
+        
+        // Draw the key pose
+        poseUtils.drawOnCanvas(canvas, keyPose, {
+          color: '#3B82F6',
+          lineWidth: 1,
+          pointRadius: 2
+        })
+      }
+    });
+  })
 };
 
 const selectPose = (keyPose, index) => {
-  selectedPoseIndex.value = index;
-  selectedPose.value = keyPose;
-  poseSimilarity.value = null;
-  consecutiveHighSimilarity.value = 0;
-  updateBorderColor(null);
-  resetPoseAdjustments();
-};
+  console.log("selecting pose", keyPose, index)
+  selectedPose.value = keyPose
+  selectedPoseIndex.value = index
+}
+
+const resetProgress = () => {
+  completedPoses.value = new Array(keyPoses.value.length).fill(false)
+  showCongratulationsModal.value = false
+  poseSimilarity.value = null
+}
+
+const resetPoseAdjustments = () => {
+  poseScaleX.value = 1.0
+  poseScaleY.value = 1.0
+  poseOffsetX.value = 0
+  poseOffsetY.value = 0
+}
+
+// Setup canvas when pose canvas ref changes
+watch(poseCanvas, (newCanvas) => {
+  if (newCanvas) {
+    // Setup main pose canvas
+    const resizeCanvas = () => {
+      const rect = newCanvas.getBoundingClientRect()
+      newCanvas.width = rect.width
+      newCanvas.height = rect.height
+    }
+    
+    resizeCanvas()
+    window.addEventListener('resize', resizeCanvas)
+    
+    onUnmounted(() => {
+      window.removeEventListener('resize', resizeCanvas)
+    })
+  }
+})
 
 onMounted(async () => {
-  await loadMotionData();
-  await initializePoseDetector();
-  await startCamera();
-});
+  await loadData()
+  await setupVideo()
+  renderKeyPoses()
+})
 
 onUnmounted(() => {
-  stopCamera();
-});
+  if (animationFrameId.value) {
+    cancelAnimationFrame(animationFrameId.value)
+  }
+  poseUtils.cleanup()
+})
 </script> 

@@ -11,9 +11,7 @@ export default defineNuxtConfig({
       include: ['@mediapipe/pose']
     }
   },
-  build: {
-    transpile: ['@mediapipe/pose']
-  },
+  
   css: ["~/assets/app.css"],
   motion: {
     directives: {
