@@ -1,75 +1,56 @@
-# Nuxt Minimal Starter
+# MoveSync
 
-Look at the [Nuxt documentation](https://nuxt.com/docs/getting-started/introduction) to learn more.
+MoveSync is a platform designed to help users easily replicate and master various movements, from popular dances to professional sports techniques. By leveraging advanced pose detection and intuitive visual feedback, MoveSync enables users to learn, practice, and perfect motions with real-time guidance.
 
-## Setup
+![Homepage](./Screenshot.png)
 
-Make sure to install dependencies:
+## Features
 
-```bash
-# npm
-npm install
+- **Real-Time Pose Detection:** Accurately tracks and analyzes user movements using video input.
+- **Visual Feedback:** Provides clear, interactive overlays to help users adjust and improve their form.
+- **Learning Library:** Access a growing collection of motions, including dances, sports swings, and more.
 
-# pnpm
-pnpm install
 
-# yarn
-yarn install
+## Getting Started
 
-# bun
-bun install
-```
+### Prerequisites
 
-## Development Server
+- [Node.js](https://nodejs.org/) (v16 or higher recommended)
+- [Yarn](https://yarnpkg.com/) or [npm](https://www.npmjs.com/)
 
-Start the development server on `http://localhost:3000`:
+### Installation
 
-```bash
-# npm
-npm run dev
+1. Clone the repository:
+    ```bash
+    git clone https://github.com/matissjurevics/movesync.git
+    cd movesync
+    ```
 
-# pnpm
-pnpm dev
+2. Install dependencies:
+    ```bash
+    yarn install
+    # or
+    npm install
+    ```
 
-# yarn
-yarn dev
+3. Start the development server:
+    ```bash
+    yarn dev
+    # or
+    npm run dev
+    ```
 
-# bun
-bun run dev
-```
+4. Open your browser and navigate to `http://localhost:3000`.
 
-## Production
+## Usage
 
-Build the application for production:
+- Sign up or log in to your account.
+- Select a motion to learn from the library.
+- Allow camera access for pose detection.
+- Follow the on-screen guidance to practice and improve your movement.
 
-```bash
-# npm
-npm run build
+## Acknowledgements
 
-# pnpm
-pnpm build
+- [TensorFlow.js](https://www.tensorflow.org/js) for pose estimation
+- [Nuxt.js](https://nuxt.com/) for the application framework
 
-# yarn
-yarn build
-
-# bun
-bun run build
-```
-
-Locally preview production build:
-
-```bash
-# npm
-npm run preview
-
-# pnpm
-pnpm preview
-
-# yarn
-yarn preview
-
-# bun
-bun run preview
-```
-
-Check out the [deployment documentation](https://nuxt.com/docs/getting-started/deployment) for more information.
