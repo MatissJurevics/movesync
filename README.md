@@ -2,6 +2,7 @@
 
 MoveSync is a platform designed to help users easily replicate and master various movements, from popular dances to professional sports techniques. By leveraging advanced pose detection and intuitive visual feedback, MoveSync enables users to learn, practice, and perfect motions with real-time guidance.
 
+![App Page](./Screenshot2.png)
 ![Homepage](./Screenshot.png)
 
 ## Features
@@ -48,7 +49,7 @@ MoveSync is a platform designed to help users easily replicate and master variou
 - Select a motion to learn from the library.
 - Allow camera access for pose detection.
 - Follow the on-screen guidance to practice and improve your movement.
-
+=
 ## Acknowledgements
 
 - [TensorFlow.js](https://www.tensorflow.org/js) for pose estimation
